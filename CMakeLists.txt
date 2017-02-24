@@ -5,6 +5,10 @@ project(ProtocolSession CXX)
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 set(CMAKE_CXX_STANDARD 11)
 
+# temporary
+# this will be picked up from conan libtorrent package option
+add_definitions(-DTORRENT_NO_DEPRECATE)
+
 include(${CMAKE_BINARY_DIR}/conanbuildinfo.cmake)
 conan_basic_setup()
 
