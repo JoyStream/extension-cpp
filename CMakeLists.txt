@@ -34,4 +34,4 @@ set(
 )
 
 # === build library ===
-add_library(protocol_session ${library_sources})
+add_library(extension ${library_sources})
