@@ -9,6 +9,10 @@ set(CMAKE_CXX_STANDARD 11)
 # this will be picked up from conan libtorrent package option
 add_definitions(-DTORRENT_NO_DEPRECATE)
 
+# extension name "Crypto Currency (Extension)"
+add_definitions(-DBEP10_EXTENSION_NAME=\"cc\")
+add_definitions(-DCLIENT_PREFIX_STRING=\"js_\")
+
 include(${CMAKE_BINARY_DIR}/conanbuildinfo.cmake)
 conan_basic_setup()
 
