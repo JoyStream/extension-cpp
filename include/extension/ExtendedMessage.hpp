@@ -29,8 +29,8 @@ public:
     void send(libtorrent::peer_connection_handle &);
 
 private:
-    boost::shared_array<char> _extendedMessageBuffer;
     const size_t _size;
+    boost::shared_array<char> _extendedMessageBuffer;
     char_array_buffer _payloadBuffer;
 };
 
