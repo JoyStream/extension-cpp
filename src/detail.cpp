@@ -135,8 +135,12 @@ void RequestVariantVisitor::operator()(const request::PostPeerPluginStatusUpdate
 
     for(auto m : torrentPeerPlugins) {
 
-        // Get connection status corresponding to peer plugin
-        auto connectionStatus = torrentPlugin->session().connectionStatus(m.first);
+        boost::optional<protocol_session::status::Connection<libtorrent::tcp::endpoint>> connectionStatus;
+
+        if (torrentPlugin->session().hasConnection(m.first)) {
+          // Get connection status corresponding to peer plugin
+          connectionStatus = torrentPlugin->session().connectionStatus(m.first);
+        }
 
         // Generate peer plugin status, and add it to the map
         boost::shared_ptr<PeerPlugin> peerPlugin = m.second.lock();
