@@ -31,3 +31,32 @@ set(
 
 # === build library ===
 add_library(extension ${library_sources})
+
+# === build tests ===
+if(build_tests)
+
+  # test library prepared,
+    # mock headers not included, as they
+  set(
+    test_lib_source
+      test/TorrentClient.cpp
+      test/TorrentClientSwarm.cpp
+  )
+
+  # === test library ===
+  include_directories("${CMAKE_SOURCE_DIR}/test")
+
+  add_library(test_lib ${test_lib_source})
+
+  file(GLOB tests RELATIVE "${CMAKE_SOURCE_DIR}" "test/test_*.cpp")
+
+  enable_testing()
+
+  foreach(s ${tests})
+    get_filename_component (sn ${s} NAME_WE)
+    add_executable(${sn} ${s})
+    target_link_libraries(${sn} test_lib extension ${CONAN_LIBS})
+    add_test(${sn} "bin/${sn}")
+  endforeach(s)
+
+endif()
