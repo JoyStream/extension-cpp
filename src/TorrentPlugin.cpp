@@ -663,22 +663,6 @@ void TorrentPlugin::drop(const libtorrent::tcp::endpoint & endPoint, const libto
         _peers.erase(it);
 }
 
-template<class M>
-void TorrentPlugin::processExtendedMessage(const libtorrent::tcp::endpoint & endPoint, const M &extendedMessage){
-
-    if(_session.mode() == protocol_session::SessionMode::not_set) {
-        std::clog << "Ignoring extended message - session mode not set" << std::endl;
-        return;
-    }
-
-    if(!_session.hasConnection(endPoint)) {
-        std::clog << "Ignoring extended message - connection already removed from session" << std::endl;
-        return;
-    }
-    // Have session process message
-    _session.processMessageOnConnection<M>(endPoint, extendedMessage);
-}
-
 protocol_session::RemovedConnectionCallbackHandler<libtorrent::tcp::endpoint> TorrentPlugin::removeConnection() {
 
     return [this](const libtorrent::tcp::endpoint & endPoint, protocol_session::DisconnectCause cause) {
