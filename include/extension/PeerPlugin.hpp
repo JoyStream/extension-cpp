@@ -143,7 +143,35 @@ namespace status {
 
         // Sends extended message to peer
         template<class T>
-        void send(const T&);
+        void send(const T& payload) {
+
+            const auto size = protocol_wire::OutputWireStream::sizeOf(payload);
+
+            auto messageType = getMessageType(payload);
+
+            ExtendedMessage m(size, _peerMapping.id(messageType));
+
+            protocol_wire::OutputWireStream writer(m.payloadBuf());
+
+            std::streamsize written = 0;
+
+            try {
+                written = writer.write(payload);
+            } catch(std::exception &e) {
+                std::clog << "Error writing message payload, message not sent." << std::endl;
+                return;
+            }
+
+            if(size != written) {
+                std::clog << "Error payload not fully written, message not sent." << std::endl;
+                return;
+            }
+
+            // Send message buffer
+            m.send(_connection);
+
+            std::clog << "SENT:" << getMessageName(messageType) << " = " << written << "bytes" << std::endl;
+        }
 
         // Status of plugin
         status::PeerPlugin status(const boost::optional<protocol_session::status::Connection<libtorrent::tcp::endpoint>> & connections) const;
