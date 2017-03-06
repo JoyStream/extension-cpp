@@ -116,8 +116,8 @@ TorrentClientSwarm::TorrentClientSwarm(const std::string & base_folder,
         ptr->
 
 
-        // Start
-        ptr->client.start_torrent_plugin(params);
+                // Start
+                ptr->client.start_torrent_plugin(params);
 
         normal_leecher.push_back(std::move(ptr));
 

@@ -9,45 +9,37 @@
 
 #include <extension/extension.hpp>
 
-TorrentClient::Buyer(const std::unique_ptr<libtorrent::session> & session,
-                     const boost::shared_ptr<extension::Plugin> & plugin)
-    : _state(state::Init())
-    , _session(session)
-    , _plugin(plugin) {
+#include <chrono>
+
+TorrentClient::TorrentClient(libtorrent::session * session,
+                             extension::Plugin * plugin)
+        : _state(state::Init())
+        , _session(session)
+        , _plugin(plugin) {
 }
 
-void TorrentClient::start_torrent_plugin(const libtorrent::add_torrent_params & params) {
+void TorrentClient::add(const libtorrent::add_torrent_params & params) {
 
     if(boost::get<state::Init>(&_state)) {
 
-      this->_state = state::AddingTorrent();
+        this->_state = state::AddingTorrent();
 
-      // Add torrent
-      plugin->submit(extension::request::AddTorrent(params, [this](libtorrent::error_code & ec, libtorrent::torrent_handle &) -> void {
+        // Add torrent
+        _plugin->submit(extension::request::AddTorrent(params, [this](libtorrent::error_code & ec, libtorrent::torrent_handle & h) -> void {
 
-        if(ec)
-          this->_state = state::AddingTorrentFailed();
-        else {
-          this->_state = state::AddedTorrent(params);
-
-          auto * added_torrent_state = boost::get<state::AddedTorrent>(&this->_state);
-
-          // Start plugin
-          plugin->submit(extension::request::Start(params.info_hash, [added_torrent_state](const std::exception_ptr & e) {
-
-            if(e)
-                *(added_torrent_state) = state::StartingPluginFailed();
+            if(ec)
+                this->_state = state::AddingTorrentFailed();
             else
-                *(added_torrent_state) = state::PluginStarted();
+                this->_state = state::AddedTorrent(params, h);
 
-          }));
+        }));
 
-        }
+        // Run alert processing long enough to process all callbacks above to completion
+        Poller(this, 3, 1*std::chrono::seconds);
 
-      }));
-
-      // Run alert processing long enough to process all callbacks above to completion
-      RunPollerLoop(this, 3, 1*std::chrono_literals::s);
+        // If we are still adding the torrent, then we have failed
+        if(boost::get<state::AddingTorrent>(&_state))
+            throw std::runtime_error("Torrent was not added within poller expiration time.");
 
     } else
         throw std::runtime_error("Cannot start, is already started.");
@@ -55,80 +47,88 @@ void TorrentClient::start_torrent_plugin(const libtorrent::add_torrent_params & 
 
 void TorrentClient::connect(const libtorrent::tcp::endpoint & endpoint) {
 
-  if(auto * added_torrent = boost::get<state::AddedTorrent>(&_state)) {
-
-    // Get torrent handle
-    libtorrent::torrent_handle h = _session->find_torrent(added_torrent->params.info_hash);
-
-    // Make connection with peer on torrent
-    h.connect_peer(endpoint);
-
-  } else
-      throw std::runtime_error("Cannot start, torrent not yet added.");
+    if(auto * added_torrent = boost::get<state::AddedTorrent>(&_state))
+        added_torrent->handle.connect_peer(endpoint);
+    else
+        throw std::runtime_error("Cannot start, torrent not yet added.");
 }
+
+/**
+auto * added_torrent_state = boost::get<state::AddedTorrent>(&this->_state);
+
+// Start plugin
+_plugin->submit(extension::request::Start(params.info_hash, [added_torrent_state](const std::exception_ptr & e) {
+
+    if(e)
+        *(added_torrent_state) = state::StartingPluginFailed();
+    else
+        *(added_torrent_state) = state::PluginStarted();
+
+}));
+*/
 
 state::AddedTorrent * has_plugin_started(const State * state) {
 
-  if(auto * added_torrent_state = boost::get<state::AddedTorrent>(state)) {
-    if(boost::get<state::PluginStarted>(added_torrent_state))
-      return added_torrent_state;
-    else
-      throw std::runtime_error("Cannot start plugin, have to be in state:  AddedTorrent::PluginStarted");
-  } else
-    throw std::runtime_error("Cannot start, have to be in state: AddedTorrent.");
+    if(auto * added_torrent_state = boost::get<state::AddedTorrent>(state)) {
+        if(boost::get<state::PluginStarted>(added_torrent_state))
+            return added_torrent_state;
+        else
+            throw std::runtime_error("Cannot start plugin, have to be in state:  AddedTorrent::PluginStarted");
+    } else
+        throw std::runtime_error("Cannot start, have to be in state: AddedTorrent.");
 }
 
 void Buy::async_buy(const protocol_wire::BuyerTerms & terms) {
 
-  state::AddedTorrent * added_torrent_state = has_plugin_started(&_state);
+    state::AddedTorrent * added_torrent_state = has_plugin_started(&_state);
 
-  *(added_torrent_state) = Buy(terms);
+    *(added_torrent_state) = Buy(terms);
 
-  auto * buy_state = boost::get<state::AddedTorrent::Buy>(added_torrent_state);
+    auto * buy_state = boost::get<state::AddedTorrent::Buy>(added_torrent_state);
 
-  // To buy mode
-  plugin->submit(extension::request::ToBuyMode(added_torrent_state->params.info_hash, terms, [buy_state](const std::exception_ptr & e) {
+    // To buy mode
+    _plugin->submit(extension::request::ToBuyMode(added_torrent_state->params.info_hash, terms, [buy_state](const std::exception_ptr & e) {
 
-      if(e)
-        (*buy_state) = state::AddedTorrent::Buy::StartingBuyModeFailed();
-      else {
+        if(e)
+            (*buy_state) = state::AddedTorrent::Buy::StartingBuyModeFailed();
+        else {
 
-        (*buy_state) = state::AddedTorrent::Buy::BuyModeStarted();
+            (*buy_state) = state::AddedTorrent::Buy::BuyModeStarted();
 
-        // At this point, we have to wait for an asynchronous event, namely
-        // that a connection with a suitable seller is estalished,
-        // and we catch this in alert processor.
+            // At this point, we have to wait for an asynchronous event, namely
+            // that a connection with a suitable seller is estalished,
+            // and we catch this in alert processor.
 
-      }
+        }
 
-  }));
+    }));
 
 }
 
 void TorrentClient::async_sell(const protocol_wire::SellerTerms & terms) {
 
-  state::AddedTorrent * added_torrent_state = has_plugin_started(&_state);
+    state::AddedTorrent * added_torrent_state = has_plugin_started(&_state);
 
-  *(added_torrent_state) = Sell(terms);
+    *(added_torrent_state) = Sell(terms);
 
-  auto * sell_state = boost::get<state::AddedTorrent::Buy>(added_torrent_state);
+    auto * sell_state = boost::get<state::AddedTorrent::Buy>(added_torrent_state);
 
-  // To sell mode
-  plugin->submit(extension::request::ToSellMode(added_torrent_state->params.info_hash, terms, [sell_state](const std::exception_ptr & e) {
+    // To sell mode
+    _plugin->submit(extension::request::ToSellMode(added_torrent_state->params.info_hash, terms, [sell_state](const std::exception_ptr & e) {
 
-      if(e)
-        (*sell_state) = state::AddedTorrent::Sell::StartingSellModeFailed();
-      else {
+        if(e)
+            (*sell_state) = state::AddedTorrent::Sell::StartingSellModeFailed();
+        else {
 
-        (*sell_state) = state::AddedTorrent::Sell::SellModeStarted();
+            (*sell_state) = state::AddedTorrent::Sell::SellModeStarted();
 
-        // At this point, we have to wait for an asynchronous event, namely
-        // that a connection with a suitable seller is estalished,
-        // and we catch this in alert processor.
+            // At this point, we have to wait for an asynchronous event, namely
+            // that a connection with a suitable seller is estalished,
+            // and we catch this in alert processor.
 
-      }
+        }
 
-  }));
+    }));
 }
 
 void TorrentClient::async_observe() {
@@ -140,15 +140,15 @@ void TorrentClient::async_observe() {
     auto * observe_state = boost::get<state::AddedTorrent::Observe>(added_torrent_state);
 
     // To sell mode
-    plugin->submit(extension::request::ToObserveMode(added_torrent_state->params.info_hash, [observe_state](const std::exception_ptr & e) {
+    _plugin->submit(extension::request::ToObserveMode(added_torrent_state->params.info_hash, [observe_state](const std::exception_ptr & e) {
 
         if(e)
-          (*observe_state) = state::AddedTorrent::Observe::StartingObserveModeFailed();
+            (*observe_state) = state::AddedTorrent::Observe::StartingObserveModeFailed();
         else {
 
-          (*observe_state) = state::AddedTorrent::Observe::ObserveModeStarted();
+            (*observe_state) = state::AddedTorrent::Observe::ObserveModeStarted();
 
-          // nothing more to do for this mode
+            // nothing more to do for this mode
 
         }
 
@@ -182,12 +182,12 @@ void TorrentClient::poll() {
         }
 
         // Get status update on torrent plugins
-        s->plugin->submit(extension::request::PostTorrentPluginStatusUpdates());
+        s->_plugin->submit(extension::request::PostTorrentPluginStatusUpdates());
     }
 }
 
 State TorrentClient::state() const noexcept {
-  return _state;
+    return _state;
 }
 
 void TorrentClient::process(const libtorrent::alert * a) {
@@ -203,7 +203,7 @@ void TorrentClient::process(const libtorrent::alert * a) {
 void TorrentClient::process(const extension::alert::TorrentPluginStatusUpdateAlert * p) {
 
     for(auto m: p->statuses)
-        plugin->submit(extension::request::PostPeerPluginStatusUpdates(m.first));
+        _plugin->submit(extension::request::PostPeerPluginStatusUpdates(m.first));
 }
 
 struct SellerInformation {
@@ -212,8 +212,8 @@ struct SellerInformation {
 
     SellerInformation(const protocol_wire::SellerTerms & terms,
                       const Coin::PublicKey & contractPk)
-        : terms(terms)
-        , contractPk(contractPk) {
+            : terms(terms)
+            , contractPk(contractPk) {
     }
 
     protocol_wire::SellerTerms terms;
@@ -225,14 +225,14 @@ std::map<libtorrent::tcp::endpoint, SellerInformation> select_N_sellers(unsigned
 
 void TorrentClient::process(const extension::alert::PeerPluginStatusUpdateAlert * p) {
 
-  state::AddedTorrent * s;
-  if(auto * added_torrent_state = boost::get<state::AddedTorrent>(state)) {
-    if(s = boost::get<state::PluginStarted>(added_torrent_state))
+    state::AddedTorrent * s;
+    if(auto * added_torrent_state = boost::get<state::AddedTorrent>(state)) {
+        if(s = boost::get<state::PluginStarted>(added_torrent_state))
 
-    else
-      return;
-  } else
-    return;
+                else
+        return;
+    } else
+        return;
 
 
     // figure out if torrent hasbeen added
@@ -246,69 +246,69 @@ void TorrentClient::process(const extension::alert::PeerPluginStatusUpdateAlert 
 
 void TorrentClient::process(const extension::alert::PeerPluginStatusUpdateAlert *p) {
 
-  if(state == State::buy_mode_started) {
+    if(state == State::buy_mode_started) {
 
-      std::map<libtorrent::tcp::endpoint, SellerInformation> sellers;
+        std::map<libtorrent::tcp::endpoint, SellerInformation> sellers;
 
-      try {
-          sellers = select_N_sellers(terms.minNumberOfSellers(), p->statuses);
-      } catch(const std::runtime_error & e) {
-          //log("Coulndt find sufficient number of suitable sellers");
-          return;
-      }
+        try {
+            sellers = select_N_sellers(terms.minNumberOfSellers(), p->statuses);
+        } catch(const std::runtime_error & e) {
+            //log("Coulndt find sufficient number of suitable sellers");
+            return;
+        }
 
-      // Create contract commitments and download information
-      protocol_session::PeerToStartDownloadInformationMap<libtorrent::tcp::endpoint> map;
-      paymentchannel::ContractTransactionBuilder::Commitments commitments(sellers.size());
+        // Create contract commitments and download information
+        protocol_session::PeerToStartDownloadInformationMap<libtorrent::tcp::endpoint> map;
+        paymentchannel::ContractTransactionBuilder::Commitments commitments(sellers.size());
 
-      uint32_t output_index = 0;
-      for(const auto & s: sellers) {
+        uint32_t output_index = 0;
+        for(const auto & s: sellers) {
 
-          // fixed for now
-          int64_t value = 100000;
-          Coin::KeyPair buyerKeyPair(Coin::PrivateKey::generate());  // **replace later with determinisic key**
-          Coin::PubKeyHash buyerFinalPkHash;
+            // fixed for now
+            int64_t value = 100000;
+            Coin::KeyPair buyerKeyPair(Coin::PrivateKey::generate());  // **replace later with determinisic key**
+            Coin::PubKeyHash buyerFinalPkHash;
 
-          protocol_session::StartDownloadConnectionInformation inf(s.second.terms,
-                                                                              output_index,
-                                                                              value,
-                                                                              buyerKeyPair,
-                                                                              buyerFinalPkHash);
+            protocol_session::StartDownloadConnectionInformation inf(s.second.terms,
+                                                                     output_index,
+                                                                     value,
+                                                                     buyerKeyPair,
+                                                                     buyerFinalPkHash);
 
-          map.insert(std::make_pair(s.first, inf));
+            map.insert(std::make_pair(s.first, inf));
 
 
-          commitments[output_index] = paymentchannel::Commitment(value,
-                                                                 buyerKeyPair.pk(),
-                                                                 s.second.contractPk, // payeePK
-                                                                 Coin::RelativeLockTime(Coin::RelativeLockTime::Units::Time, s.second.terms.minLock()));
+            commitments[output_index] = paymentchannel::Commitment(value,
+                                                                   buyerKeyPair.pk(),
+                                                                   s.second.contractPk, // payeePK
+                                                                   Coin::RelativeLockTime(Coin::RelativeLockTime::Units::Time, s.second.terms.minLock()));
 
-          output_index++;
-      }
+            output_index++;
+        }
 
-      // Create contract transaction
-      paymentchannel::ContractTransactionBuilder c;
-      c.setCommitments(commitments);
+        // Create contract transaction
+        paymentchannel::ContractTransactionBuilder c;
+        c.setCommitments(commitments);
 
-      Coin::Transaction tx = c.transaction();
+        Coin::Transaction tx = c.transaction();
 
-      // Starting download
+        // Starting download
 
-      // state = StartingDownload()
+        // state = StartingDownload()
 
-      plugin->submit(extension::request::StartDownloading(p->handle.info_hash(), tx, map, [=](const std::exception_ptr & e) -> void {
+        _plugin->submit(extension::request::StartDownloading(p->handle.info_hash(), tx, map, [=](const std::exception_ptr & e) -> void {
 
-          if(e)
-              state = State::downloading_starting_failed; // StartingDownloadFailed()
-          else
-              state = State::downloading_started; // DownloadingStarted()
+            if(e)
+                state = State::downloading_starting_failed; // StartingDownloadFailed()
+            else
+                state = State::downloading_started; // DownloadingStarted()
 
-          // we are done, nothing more to do?
+            // we are done, nothing more to do?
 
-      }));
+        }));
 
-  } else if () {}
-  else if () {}
+    } else if () {}
+    else if () {}
 }
 
 std::map<libtorrent::tcp::endpoint, SellerInformation> select_N_sellers(unsigned int N, const std::map<libtorrent::tcp::endpoint, extension::status::PeerPlugin> & statuses) {
@@ -317,19 +317,19 @@ std::map<libtorrent::tcp::endpoint, SellerInformation> select_N_sellers(unsigned
 
     for(auto s : statuses) {
 
-       libtorrent::tcp::endpoint ep = s.first;
-       extension::status::PeerPlugin status = s.second;
+        libtorrent::tcp::endpoint ep = s.first;
+        extension::status::PeerPlugin status = s.second;
 
-       if(status.peerBEP10SupportStatus == extension::BEPSupportStatus::supported &&
-          status.peerBitSwaprBEPSupportStatus == extension::BEPSupportStatus::supported &&
-          status.connection.is_initialized()) {
+        if(status.peerBEP10SupportStatus == extension::BEPSupportStatus::supported &&
+           status.peerBitSwaprBEPSupportStatus == extension::BEPSupportStatus::supported &&
+           status.connection.is_initialized()) {
 
-           auto & machine = status.connection.get().machine;
+            auto & machine = status.connection.get().machine;
 
-           if(machine.innerStateTypeIndex == typeid(protocol_statemachine::PreparingContract) && selected.size() < N)
-               selected[ep] = SellerInformation(machine.announcedModeAndTermsFromPeer.sellModeTerms(),
-                                                machine.payor.payeeContractPk());
-       }
+            if(machine.innerStateTypeIndex == typeid(protocol_statemachine::PreparingContract) && selected.size() < N)
+                selected[ep] = SellerInformation(machine.announcedModeAndTermsFromPeer.sellModeTerms(),
+                                                 machine.payor.payeeContractPk());
+        }
     }
 
     return selected;

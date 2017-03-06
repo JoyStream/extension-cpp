@@ -24,21 +24,21 @@ public:
 
 struct Poller {
 
-  const std::vector<PollableInterface *> subjects;
+    std::vector<PollableInterface *> subjects;
 
-  template< class Rep, class Period >
-  void run(unsigned int iteration_counter,
-           const std::chrono::duration<Rep, Period> & iteration_sleep_duration) {
+    template< class Rep, class Period >
+    void run(unsigned int iteration_counter,
+             const std::chrono::duration<Rep, Period> & iteration_sleep_duration) {
 
-    for(unsigned int i = 0; i < iteration_counter; i++) {
+        for(unsigned int i = 0; i < iteration_counter; i++) {
 
-        for(auto s : subjects)
-            s->poll();
+            for(auto s : subjects)
+                s->poll();
 
-        std::this_thread::sleep_for(iteration_sleep_duration);
+            std::this_thread::sleep_for(iteration_sleep_duration);
+        }
+
     }
-
-  }
 
 };
 
