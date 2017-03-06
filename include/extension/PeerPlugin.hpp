@@ -11,7 +11,8 @@
 #include <extension/BEPSupportStatus.hpp>
 #include <extension/ExtendedMessageIdMapping.hpp>
 #include <common/MajorMinorSoftwareVersion.hpp>
-
+#include <extension/MessageType.hpp>
+#include <extension/ExtendedMessage.hpp>
 #include <protocol_session/protocol_session.hpp> // TEMPORARY
 
 #include <libtorrent/extensions.hpp>
@@ -31,7 +32,6 @@
 
 namespace joystream {
 namespace extension {
-    class ExtendedMessage;
 
 namespace status {
     struct PeerPlugin;
