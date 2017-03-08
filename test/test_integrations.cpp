@@ -12,15 +12,7 @@
 #define POLLING_COUNT 3
 #define POLLING_SLEEP_DURATION 1*std::chrono_literals::s
 
-// Generate torrent content (not random)
-std::shared_ptr<libtorrent::torrent_info> create_torrent(std::ostream* file = 0,
-                                                         char const* name = "temporary",
-                                                         int piece_size = 16 * 1024,
-                                                         int num_pieces = 13,
-                                                         bool add_tracker = true,
-                                                         std::string ssl_certificate = "") {
 
-}
 
 TEST(IntegrationTesting, Connectivity) {
 
