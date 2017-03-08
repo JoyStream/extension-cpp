@@ -7,12 +7,8 @@
 
 #include "TorrentClientSwarm.hpp"
 
+#include <boost/filesystem.hpp>
 //#include <boost/asio/impl/src.hpp>
-
-#define POLLING_COUNT 3
-#define POLLING_SLEEP_DURATION 1*std::chrono_literals::s
-
-
 
 TEST(IntegrationTesting, Connectivity) {
 
@@ -20,26 +16,21 @@ TEST(IntegrationTesting, Connectivity) {
 
 TEST(IntegrationTesting, OneToOne) {
 
-    std::string base_folder; // = boost::this_folder(); <current folder of this binary>,
-    std::string data_source_folder; // = base_folder + boost::file_sep ? "xxx"
-
-    // Create torrent file and content
-    //std::ostream* file
-    std::shared_ptr<libtorrent::torrent_info> ti = create_torrent_file("base_folder_here");
-
     // Create swarm
-    TorrentClientSwarm swarm(base_folder,
-                             data_source_folder,
-                             ti,
-                             1,
-                             1,
+    // - one seller
+    // - one buyer
+    TorrentClientSwarm swarm(boost::filesystem::current_path(),
                              0,
-                             std::vector<protocol_wire::SellerTerms>(),
-                             std::vector<protocol_wire::BuyerTerms>());
+                             0,
+                             0,
+                             { protocol_wire::SellerTerms(1, 1000, 2, 1, 1) },
+                             { protocol_wire::BuyerTerms(5, 2000, 1, 1) });
 
+    // Establish full connectivity
+    swarm.fully_connect();
 
-    // Run swarm event loop
-    swarm.run_event_loop(POLLING_COUNT, POLLING_SLEEP_DURATION);
+    // Run swarm event loop for five times at 1s intervals
+    swarm.run_event_loop(5, std::chrono::seconds(1));
 
     // *** assert something about final states ***
     //assert(swarm.)

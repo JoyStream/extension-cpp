@@ -75,7 +75,7 @@ state::AddedTorrent * has_plugin_started(const State * state) {
         else
             throw std::runtime_error("Cannot start plugin, have to be in state:  AddedTorrent::PluginStarted");
     } else
-        throw std::runtime_error("Cannot start, have to be in state: AddedTorrent.");
+        throw std::runtime_error("Cannot start plugin, have to be in state: AddedTorrent.");
 }
 
 void Buy::async_buy(const protocol_wire::BuyerTerms & terms) {
@@ -228,8 +228,6 @@ void TorrentClient::process(const extension::alert::PeerPluginStatusUpdateAlert 
     state::AddedTorrent * s;
     if(auto * added_torrent_state = boost::get<state::AddedTorrent>(state)) {
         if(s = boost::get<state::PluginStarted>(added_torrent_state))
-
-                else
         return;
     } else
         return;
@@ -307,8 +305,7 @@ void TorrentClient::process(const extension::alert::PeerPluginStatusUpdateAlert 
 
         }));
 
-    } else if () {}
-    else if () {}
+    }
 }
 
 std::map<libtorrent::tcp::endpoint, SellerInformation> select_N_sellers(unsigned int N, const std::map<libtorrent::tcp::endpoint, extension::status::PeerPlugin> & statuses) {

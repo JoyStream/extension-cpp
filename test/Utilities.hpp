@@ -5,13 +5,16 @@
 #ifndef UTILITIES_HPP
 #define UTILITIES_HPP
 
-// NB: Taken from libtorrent/test/setup_transfer.(hpp/cpp)
-std::shared_ptr<libtorrent::torrent_info> create_torrent(std::ostream* file = 0,
-                                                         char const* name = "temporary",
-                                                         int piece_size = 16 * 1024,
-                                                         int num_pieces = 13,
-                                                         bool add_tracker = true,
-                                                         std::string ssl_certificate = "");
+namespace libtorrent {
+    class session;
+}
 
+boost::shared_ptr<libtorrent::torrent_info> make_single_file_torrent(const boost::filesystem::path & base_folder,
+                                                                     const std::string & payload_file_name,
+                                                                     unsigned int piece_size_factor,
+                                                                     unsigned int num_pieces);
+
+
+libtorrent::tcp::endpoint listening_endpoint(const libtorrent::session * s);
 
 #endif //UTILITIES_HPP
