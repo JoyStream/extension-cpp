@@ -41,8 +41,12 @@ if(build_tests)
     # mock headers not included, as they
   set(
     test_lib_source
-      test/TorrentClient.cpp
-      test/TorrentClientSwarm.cpp
+      test/Swarm.cpp
+      test/AbstractSessionController.cpp
+      test/BasicObserver.cpp
+      test/Utilities.cpp
+      #test/TorrentClient.cpp
+      #test/TorrentClientSwarm.cpp
   )
 
   # === test library ===

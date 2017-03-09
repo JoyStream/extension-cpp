@@ -5,11 +5,14 @@
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 
-#include "TorrentClientSwarm.hpp"
+//#include "TorrentClientSwarm.hpp"
+#include "Swarm.hpp"
+#include "BasicObserver.hpp"
 
 #include <boost/filesystem.hpp>
 //#include <boost/asio/impl/src.hpp>
 
+/**
 TEST(IntegrationTesting, Connectivity) {
 
 }
@@ -35,6 +38,24 @@ TEST(IntegrationTesting, OneToOne) {
     // *** assert something about final states ***
     //assert(swarm.)
 }
+*/
+
+TEST(IntegrationTesting, OneToOne) {
+
+    BasicObserver observer("my_observer");
+
+    Swarm swarm;
+
+    swarm.add(&observer);
+
+    swarm.setup(boost::filesystem::current_path());
+
+    swarm.run(5, std::chrono::seconds(1));
+
+    // *** assert something about final states ***
+    //assert(observer.)
+}
+
 
 int main(int argc, char *argv[])
 {

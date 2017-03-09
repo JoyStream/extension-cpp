@@ -4,8 +4,10 @@
 
 #include "Utilities.hpp"
 #include <libtorrent/create_torrent.hpp>
-#include <libtorrent/torrent_info.hpp>
-#include <vector>
+#include <fstream>
+#include <libtorrent/address.hpp>
+#include <libtorrent/session.hpp>
+#include <extension/Alert.hpp>
 
 boost::shared_ptr<libtorrent::torrent_info> make_single_file_torrent(const boost::filesystem::path & base_folder,
                                                                      const std::string & payload_file_name,
@@ -16,7 +18,8 @@ boost::shared_ptr<libtorrent::torrent_info> make_single_file_torrent(const boost
     std::fstream fs;
 
     // Open/create
-    boost::filesystem::path payload_file = base_folder + payload_file_name;
+    boost::filesystem::path payload_file(base_folder);
+    payload_file.append(payload_file_name);
 
     fs.open(payload_file.string(), std::fstream::out | std::fstream::binary);
 
@@ -75,4 +78,27 @@ libtorrent::tcp::endpoint listening_endpoint(const libtorrent::session * s) {
     assert(ec);
 
     return ep;
+}
+
+void connect_to_all(const libtorrent::torrent_handle & h, const std::unordered_map<std::string, libtorrent::tcp::endpoint> & swarm_peers) {
+
+    for(auto m : swarm_peers)
+        h.connect_peer(m.second);
+}
+
+
+void process_pending_alert(libtorrent::session * s, const AlertProcessor & processor) {
+
+    // Process alerts
+    std::vector<libtorrent::alert *> alerts;
+    s->pop_alerts(&alerts);
+
+    for(auto a : alerts) {
+
+        if(joystream::extension::alert::RequestResult const * p = libtorrent::alert_cast<joystream::extension::alert::RequestResult>(a))
+            p->loadedCallback(); // Make loaded callback
+        else
+            processor(a);
+    }
+
 }

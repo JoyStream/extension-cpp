@@ -35,8 +35,7 @@ TorrentClientSwarm::Participant * add_participant(std::vector<std::unique_ptr<To
     v.push_back(std::move(ptr));
 
     // Add torrent
-    libtorrent::error_code ec;
-    session->add_torrent(params, ec);
+    ptr->client.add(params);
 
     return ptr.get();
 }
@@ -105,15 +104,20 @@ TorrentClientSwarm::TorrentClientSwarm(const boost::filesystem::path & base_fold
     // Setup observers
     for(int i = 0;i < number_of_observer_clients;i++) {
 
+        // how to make sure no seeding happens!
         //auto ptr = add_participant(observers, uploader_params);
 
         // Set interaction to block
-        //ptr->
+        //ptr->client.async_observe();
     }
 
     // Setup sellers
-    for(int i = 0; i < seller_client_terms.size();i++)
-        add_participant(sellers, uploader_params);
+    for(int i = 0; i < seller_client_terms.size();i++) {
+        auto ptr = add_participant(sellers, uploader_params);
+
+        // Sell
+        ptr->client.async_sell(seller_client_terms[i]);
+    }
 
     // Setup buyers
     for(int i = 0; i < buyer_client_terms.size();i++) {
@@ -124,7 +128,10 @@ TorrentClientSwarm::TorrentClientSwarm(const boost::filesystem::path & base_fold
         params.save_path = download_folder.string();
         params.ti = ti;
 
-        add_participant(buyers, params);
+        auto ptr = add_participant(buyers, params);
+
+        // Buy
+        ptr->client.async_buy(buyer_client_terms[i]);
     }
 
 }

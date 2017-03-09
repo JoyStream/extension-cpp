@@ -9,6 +9,8 @@
 
 #include <extension/extension.hpp>
 
+#include <boost/variant/get.hpp>
+
 #include <chrono>
 
 TorrentClient::TorrentClient(libtorrent::session * session,
@@ -67,7 +69,8 @@ _plugin->submit(extension::request::Start(params.info_hash, [added_torrent_state
 }));
 */
 
-state::AddedTorrent * has_plugin_started(const State * state) {
+/**
+state::AddedTorrent * torrent_has_been_added(const State * state) {
 
     if(auto * added_torrent_state = boost::get<state::AddedTorrent>(state)) {
         if(boost::get<state::PluginStarted>(added_torrent_state))
@@ -77,12 +80,25 @@ state::AddedTorrent * has_plugin_started(const State * state) {
     } else
         throw std::runtime_error("Cannot start plugin, have to be in state: AddedTorrent.");
 }
+ */
 
-void Buy::async_buy(const protocol_wire::BuyerTerms & terms) {
+state::AddedTorrent * torrent_has_been_added(TorrentClient::State * state) {
 
-    state::AddedTorrent * added_torrent_state = has_plugin_started(&_state);
+    if(auto * added_torrent_state = boost::get<state::AddedTorrent>(state))
+        return added_torrent_state;
+    else
+        throw std::runtime_error("Torrent has not yet been added.");
+}
 
-    *(added_torrent_state) = Buy(terms);
+void TorrentClient::async_buy(const protocol_wire::BuyerTerms & terms) {
+
+    state::AddedTorrent * added_torrent_state = torrent_has_been_added(&_state);
+
+    if(!boost::get<state::AddedTorrent::WaitingForMode>(added_torrent_state))
+        throw std::runtime_error("Mode already set");
+
+    //
+    *(added_torrent_state) = state::AddedTorrent::Buy(terms);
 
     auto * buy_state = boost::get<state::AddedTorrent::Buy>(added_torrent_state);
 
