@@ -28,12 +28,15 @@ void BasicObserver::join(const boost::shared_ptr<libtorrent::torrent_info> & ti,
 
         // problem, if we allow going forward, without the torrent being added,
         // then if someone else tries to connect to us, they will fail.
-        // sol 1: dont use addtorrent, use add_torrent, which is synchrnous
-        // sol 2: some how block in ::join call untill we know we can move forward??
+        // sol 1: dont use addTorrent, use add_torrent, which is synchronous
+        // sol 2: some how block in ::join call until we know we can move forward??
         //
 
+        Poller poller;
+        poller.add(this); //
+
         // Add torrent using plugin
-        _plugin->submit(joystream::extension::request::AddTorrent(params, [this, params](libtorrent::error_code &ec,
+        _plugin->submit(joystream::extension::request::AddTorrent(params, [this, params, &poller](libtorrent::error_code &ec,
                                                                                          libtorrent::torrent_handle &h) -> void {
 
             assert(boost::get<AddingTorrent>(&_state));
@@ -53,7 +56,12 @@ void BasicObserver::join(const boost::shared_ptr<libtorrent::torrent_info> & ti,
 
             }
 
+            poller.stop();
+
         }));
+
+        // -->
+        poller.start(); // add something about max time?
 
     } else
         throw std::runtime_error("Cannot join, no longer in Init state.");
@@ -81,6 +89,8 @@ void BasicObserver::swarm_peer_list_ready(const std::unordered_map<std::string, 
 }
 
 void BasicObserver::poll() {
+
+    // should some of this really be in based class??
 
     process_pending_alert(&_session,
                           [this](libtorrent::alert * a) -> void {

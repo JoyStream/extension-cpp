@@ -22,24 +22,6 @@ public:
     virtual void poll() = 0;
 };
 
-struct Poller {
 
-    std::vector<PollableInterface *> subjects;
-
-    template< class Rep, class Period >
-    void run(unsigned int iteration_counter,
-             const std::chrono::duration<Rep, Period> & iteration_sleep_duration) {
-
-        for(unsigned int i = 0; i < iteration_counter; i++) {
-
-            for(auto s : subjects)
-                s->poll();
-
-            std::this_thread::sleep_for(iteration_sleep_duration);
-        }
-
-    }
-
-};
 
 #endif // POLLABLEINTERFACE_HPP

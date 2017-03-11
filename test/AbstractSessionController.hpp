@@ -2,9 +2,10 @@
 // Created by bedeho on 09.03.17.
 //
 
-#ifndef PROTOCOLSESSION_SESSIONCONTROLLER_HPP_H
-#define PROTOCOLSESSION_SESSIONCONTROLLER_HPP_H
+#ifndef SESSIONCONTROLLER_HPP
+#define SESSIONCONTROLLER_HPP
 
+#include "PollableInterface.hpp"
 
 #include <libtorrent/socket.hpp>
 
@@ -20,7 +21,7 @@ namespace libtorrent {
 
 }
 
-class AbstractSessionController {
+class AbstractSessionController : public PollableInterface {
 
 public:
 
@@ -59,4 +60,4 @@ private:
     const std::string _name;
 };
 
-#endif //PROTOCOLSESSION_SESSIONCONTROLLER_HPP_H
+#endif //SESSIONCONTROLLER_HPP
