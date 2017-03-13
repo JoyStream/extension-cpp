@@ -24,16 +24,12 @@ void BasicObserver::join(const boost::shared_ptr<libtorrent::torrent_info> & ti,
         params.ti = ti;
         params.save_path = working_directory; // since payload is not here, libtorrent will - by default, attempt to download content from peers
 
-        // **** change setting to some how prevent libtorrent from downloading
-
-        // problem, if we allow going forward, without the torrent being added,
-        // then if someone else tries to connect to us, they will fail.
-        // sol 1: dont use addTorrent, use add_torrent, which is synchronous
-        // sol 2: some how block in ::join call until we know we can move forward??
-        //
+        // We start a poller to allow blocking here,
+        // while still servicing this observers alert processing,
+        // until response from adding torrent returns
 
         Poller poller;
-        poller.add(this); //
+        poller.add(this);
 
         // Add torrent using plugin
         _plugin->submit(joystream::extension::request::AddTorrent(params, [this, params, &poller](libtorrent::error_code &ec,
@@ -56,11 +52,12 @@ void BasicObserver::join(const boost::shared_ptr<libtorrent::torrent_info> & ti,
 
             }
 
+            // Signal that poller can stop
             poller.stop();
 
         }));
 
-        // -->
+        // Start blocking poller
         poller.start(); // add something about max time?
 
     } else

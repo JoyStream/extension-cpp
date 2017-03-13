@@ -9,16 +9,21 @@
 
 #define WORK_DIR_NAME "swarm"
 
-void Swarm::add(AbstractSessionController * controller) {
+// Swarm
 
-    if(participants.count(controller->name()) > 0)
+
+// SwarmBuilder
+
+void SwarmBuilder::add(AbstractSessionController * controller) {
+
+    if(_participants.count(controller->name()) > 0)
         throw std::runtime_error("Name already taken");
     else
-        participants.insert(std::make_pair(controller->name(), controller));
+        _participants.insert(std::make_pair(controller->name(), controller));
 
 }
 
-void Swarm::setup(const boost::filesystem::path & base_folder) {
+Swarm SwarmBuilder::build(const boost::filesystem::path & base_folder) {
 
     // Working directory for swarm
     boost::filesystem::path work_folder(base_folder);
@@ -47,7 +52,7 @@ void Swarm::setup(const boost::filesystem::path & base_folder) {
                                                                               113); // number of pieces
 
     // Create working directory for each session, and ask to join swarm
-    for(auto m : participants) {
+    for(auto m : _participants) {
 
         boost::filesystem::path participant_folder(work_folder);
         participant_folder.append(m.second->name());
@@ -63,7 +68,7 @@ void Swarm::setup(const boost::filesystem::path & base_folder) {
     // Build swarm peer list
     std::unordered_map<std::string, libtorrent::tcp::endpoint> endpoints;
 
-    for(auto m : participants) {
+    for(auto m : _participants) {
 
         auto opt_endpoint = m.second->session_endpoint();
 
@@ -72,6 +77,10 @@ void Swarm::setup(const boost::filesystem::path & base_folder) {
     }
 
     // Tell everyone about it
-    for(auto m: participants)
+    for(auto m: _participants)
         m.second->swarm_peer_list_ready(endpoints);
+
+    // Returns swarm for given set of of participants
+    return Swarm(_participants);
+
 }

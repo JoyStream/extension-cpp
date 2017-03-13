@@ -9,11 +9,9 @@
 #include <boost/filesystem/path.hpp>
 #include <thread>
 #include "AbstractSessionController.hpp"
+#include "Poller.hpp"
 
-namespace libtorrent {
-    struct alert;
-    class session;
-}
+class SwarmBuilder;
 
 class Swarm {
 
@@ -29,18 +27,16 @@ public:
         for(auto m : participants)
             poller.partcipants.push_back(m.second);
 
+        // Poll
         poller.run<Rep, Period>(iteration_counter, iteration_sleep_duration);
-
-
     }
 
 private:
 
-    Swarm(std::unordered_map<std::string, AbstractSessionController *> participants);
+    friend class SwarmBuilder;
 
     std::unordered_map<std::string, AbstractSessionController *> participants;
 };
-
 
 class SwarmBuilder {
 
@@ -52,9 +48,7 @@ public:
 
 private:
 
-    void setup(const boost::filesystem::path & base_folder);
-
-    std::unordered_map<std::string, AbstractSessionController *> participants;
+    std::unordered_map<std::string, AbstractSessionController *> _participants;
 };
 
 

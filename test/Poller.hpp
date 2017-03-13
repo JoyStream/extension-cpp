@@ -13,9 +13,13 @@ public:
 
     Poller();
 
-    template< class Rep, class Period >
-    void start(unsigned int iteration_counter,
-               const std::chrono::duration<Rep, Period> & iteration_sleep_duration) {
+    // allow specifying iteration_counter, or n iteration couner, which just
+    // continues until ::stop is called, have defualt value be
+
+    // have default value for sleep value, but fix it in ms, to drop the complex templating
+
+    void start(const std::chrono::milliseconds duration<Rep, Period> & iteration_sleep_duration,
+               const boost::optional<unsigned int> & use_iteration_counter = boost::optional<unsigned int>()) {
 
         // Re-entrancy block
         if(_started)
@@ -25,6 +29,8 @@ public:
 
         // Restart
         _stopOnNextIteration = false;
+
+        // <=== need to mix
 
         for(unsigned int i = 0; i < iteration_counter && !_stopOnNextIteration; i++) {
 

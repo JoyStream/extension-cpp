@@ -44,11 +44,11 @@ TEST(IntegrationTesting, OneToOne) {
 
     BasicObserver observer("my_observer");
 
-    Swarm swarm;
+    SwarmBuilder builder;
 
-    swarm.add(&observer);
+    builder.add(&observer);
 
-    swarm.setup(boost::filesystem::current_path());
+    Swarm swarm = builder.build(boost::filesystem::current_path());
 
     swarm.run(5, std::chrono::seconds(1));
 
