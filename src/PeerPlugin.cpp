@@ -328,22 +328,22 @@ namespace extension {
 
     bool PeerPlugin::on_have(int) {
         assert(!_undead);
-        return true; // overrid default handler
+        return false;
     }
 
     bool PeerPlugin::on_bitfield(libtorrent::bitfield const &) {
         assert(!_undead);
-        return true; // overrid default handler
+        return false;
     }
 
     bool PeerPlugin::on_have_all() {
         assert(!_undead);
-        return true; // overrid default handler
+        return false;
     }
 
     bool PeerPlugin::on_reject(libtorrent::peer_request const &) {
         assert(!_undead);
-        return true; // overrid default handler
+        return false;
     }
 
     bool PeerPlugin::on_request(libtorrent::peer_request const &) {
@@ -361,32 +361,32 @@ namespace extension {
 
     bool PeerPlugin::on_unchoke() {
         assert(!_undead);
-        return true; // overrid default handler
+        return false;
     }
 
     bool PeerPlugin::on_interested() {
         assert(!_undead);
-        return true; // overrid default handler
+        return false;
     }
 
     bool PeerPlugin::on_allowed_fast(int) {
         assert(!_undead);
-        return true; // overrid default handler
+        return false;
     }
 
     bool PeerPlugin::on_have_none() {
         assert(!_undead);
-        return true; // overrid default handler
+        return false;
     }
 
     bool PeerPlugin::on_choke() {
         assert(!_undead);
-        return true; // overrid default handler
+        return false;
     }
 
     bool PeerPlugin::on_not_interested() {
         assert(!_undead);
-        return true; // overrid default handler
+        return false;
     }
 
     bool PeerPlugin::on_piece(libtorrent::peer_request const &, libtorrent::disk_buffer_holder &) {
@@ -404,17 +404,17 @@ namespace extension {
 
     bool PeerPlugin::on_suggest(int) {
         assert(!_undead);
-        return true; // overrid default handler
+        return false;
     }
 
     bool PeerPlugin::on_cancel(libtorrent::peer_request const &) {
         assert(!_undead);
-        return true; // overrid default handler
+        return false;
     }
 
     bool PeerPlugin::on_dont_have(int) {
         assert(!_undead);
-        return true; // overrid default handler
+        return false;
     }
 
     bool PeerPlugin::can_disconnect(libtorrent::error_code const &) {
@@ -437,20 +437,21 @@ namespace extension {
         }
         */
 
-        // If this peer is not part of this session, then
-        // we ignore the message and ask all other plugins to do the same.
-        // This could happen if the peer is malicious, or if the connection .... <what here?>
+        // If this peer is not part of this session, then we ignore the message
         if(_plugin->_session.mode() == protocol_session::SessionMode::not_set) {
             std::clog << "Ignoring extended message, session mode not set" << std::endl;
-            return true;
+            return false;
         }
 
         if(!_plugin->_session.hasConnection(_endPoint)) {
             std::clog << "Ignoring extended message, connection not in session" << std::endl;
-            return true;
+            return false;
         }
 
         assert(_peerPaymentBEPSupportStatus == BEPSupportStatus::supported);
+
+        // Ignore message if peer has not successfully completed BEP43 handshake (yet, or perhaps never will)
+        if(_peerPaymentBEPSupportStatus != BEPSupportStatus::supported) return false;
 
         // Length of extended message, excluding the bep 10 id and extended message id.
         int lengthOfMessage = body.left();
@@ -466,15 +467,6 @@ namespace extension {
 
         } else
             std::clog << "on_extended(id =" << msg << ", length =" << length << ")" << std::endl;
-
-        // Ignore message if peer has not successfully completed BEP43 handshake (yet, or perhaps never will)
-        if(_peerPaymentBEPSupportStatus != BEPSupportStatus::supported) {
-
-            std::clog << "Received extended message despite BEP43 not supported, not for this plugin then, letting another plugin handle it." << std::endl;
-
-            // Let next plugin handle message
-            return false;
-        }
 
         // Is it a message for this extension?
         MessageType messageType;
@@ -565,7 +557,7 @@ namespace extension {
     bool PeerPlugin::on_unknown_message(int, int, libtorrent::buffer::const_interval) {
         assert(!_undead);
 
-        return true; // allow other handlers to process
+        return false; // allow other handlers to process
     }
 
     void PeerPlugin::on_piece_pass(int) {

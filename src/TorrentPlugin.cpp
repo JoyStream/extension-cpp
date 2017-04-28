@@ -493,24 +493,6 @@ void TorrentPlugin::forEachBitTorrentConnection(const std::function<void(libtorr
 }
 
 void TorrentPlugin::setLibtorrentInteraction(LibtorrentInteraction e) {
-
-    // Send messages for starting to prevent uploading
-    if(e == LibtorrentInteraction::BlockUploading ||
-       e == LibtorrentInteraction::BlockUploadingAndDownloading) {
-
-        // For each peer: sending (once) CHOCKED message in order to discourage inbound requests.
-        forEachBitTorrentConnection([](libtorrent::bt_peer_connection *c) -> void { c->write_choke(); });
-    }
-
-    // Send messages for starting to prevent uploading
-    if(e == LibtorrentInteraction::BlockDownloading ||
-       e == LibtorrentInteraction::BlockUploadingAndDownloading) {
-
-        // For each peer: sending (once) NOT-INTERESTED and CHOCKED message in order to discourage unchocking.
-        forEachBitTorrentConnection([](libtorrent::bt_peer_connection *c) -> void { c->write_not_interested(); c->write_choke(); });
-
-    }
-
     _libtorrentInteraction = e;
 }
 
