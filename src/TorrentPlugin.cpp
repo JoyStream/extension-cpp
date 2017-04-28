@@ -423,7 +423,7 @@ std::map<libtorrent::tcp::endpoint, boost::weak_ptr<PeerPlugin> > TorrentPlugin:
 
 status::TorrentPlugin TorrentPlugin::status() const {
 
-    return status::TorrentPlugin(_infoHash, _session.status());
+    return status::TorrentPlugin(_infoHash, _session.status(), libtorrentInteraction());
 }
 
 TorrentPlugin::LibtorrentInteraction TorrentPlugin::libtorrentInteraction() const {
