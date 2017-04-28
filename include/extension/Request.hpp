@@ -300,7 +300,9 @@ struct SetLibtorrentInteraction {
     SetLibtorrentInteraction(const libtorrent::sha1_hash & infoHash,
                              const TorrentPlugin::LibtorrentInteraction libtorrentInteraction,
                              const SubroutineHandler & handler)
-      : libtorrentInteraction(libtorrentInteraction) {}
+      :   infoHash(infoHash)
+        , libtorrentInteraction(libtorrentInteraction)
+        , handler(handler) {}
 
     libtorrent::sha1_hash infoHash;
     TorrentPlugin::LibtorrentInteraction libtorrentInteraction;
