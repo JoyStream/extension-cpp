@@ -271,9 +271,20 @@ void TorrentPlugin::start() {
 
     // If session was initially stopped (not paused), then initiate extended handshake
     if(initialState == protocol_session::SessionState::stopped)
-        forEachBitTorrentConnection([](libtorrent::bt_peer_connection *c) -> void {
-            if(c->support_extensions())
+        forEachBitTorrentConnection([this](libtorrent::bt_peer_connection *c) -> void {
+            if(c->support_extensions()) {
                 c->write_extensions();
+
+                auto endPoint = c->remote();
+
+                // In a stopped state we would not have added the peer to our session
+                assert(!_session.hasConnection(endPoint));
+
+                auto p = peer(endPoint);
+                // Add peer that has sent us a valid extended handshake when we were in stopped state
+                if (p->peerPaymentBEPSupportStatus() == BEPSupportStatus::supported)
+                  addToSession(endPoint);
+            }
         });
 }
 
