@@ -9,6 +9,7 @@
 #define JOYSTREAM_EXTENSION_STATUS_HPP
 
 #include <extension/BEPSupportStatus.hpp>
+#include <extension/TorrentPlugin.hpp>
 #include <protocol_session/protocol_session.hpp>
 #include <libtorrent/socket.hpp>
 #include <libtorrent/sha1_hash.hpp>
@@ -53,9 +54,11 @@ namespace status {
         TorrentPlugin() {}
 
         TorrentPlugin(const libtorrent::sha1_hash & infoHash,
-                      const protocol_session::status::Session<libtorrent::tcp::endpoint> & session)
+                      const protocol_session::status::Session<libtorrent::tcp::endpoint> & session,
+                      const extension::TorrentPlugin::LibtorrentInteraction & libtorrentInteraction)
             : infoHash(infoHash)
-            , session(session) {
+            , session(session)
+            , libtorrentInteraction(libtorrentInteraction) {
         }
 
         // Torrent info hash
@@ -63,6 +66,9 @@ namespace status {
 
         // Status of session
         protocol_session::status::Session<libtorrent::tcp::endpoint> session;
+
+        // Libtorrent Interaction mode
+        extension::TorrentPlugin::LibtorrentInteraction libtorrentInteraction;
     };
 
 }
