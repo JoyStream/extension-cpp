@@ -70,9 +70,6 @@ namespace extension {
         // 1) is dictionary entry
         // 2) has key m which maps to a dictionary entry
 
-        // Add top level key for extension which encodes protocol version
-        handshake[BEP10_EXTENSION_NAME] = protocol_statemachine::CBStateMachine::protocolVersion.toString();
-
         // Add m keys for extended message ids
         libtorrent::entry::dictionary_type & m = handshake["m"].dict();
 
@@ -90,6 +87,9 @@ namespace extension {
 
                 // Don't do on next handshake
                 _sendUninstallMappingOnNextExtendedHandshake = false;
+            } else {
+              // Send empty mapping
+              return;
             }
 
         } else {
@@ -102,6 +102,9 @@ namespace extension {
             // plugin is being used incorrectly by developer
             _clientMapping.writeToMDictionary(m);
         }
+
+        // Add top level key for extension which encodes protocol version
+        handshake[BEP10_EXTENSION_NAME] = protocol_statemachine::CBStateMachine::protocolVersion.toString();
     }
 
     void PeerPlugin::on_disconnect(libtorrent::error_code const & ec) {
@@ -614,6 +617,14 @@ namespace extension {
 
     void PeerPlugin::drop(const libtorrent::error_code & ec) {
         _plugin->drop(_endPoint, ec);
+    }
+
+    BEPSupportStatus PeerPlugin::peerBEP10SupportStatus() const {
+      return _peerBEP10SupportStatus;
+    }
+
+    BEPSupportStatus PeerPlugin::peerPaymentBEPSupportStatus() const {
+      return _peerPaymentBEPSupportStatus;
     }
 
     /**
