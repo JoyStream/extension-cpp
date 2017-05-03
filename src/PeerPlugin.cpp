@@ -70,41 +70,43 @@ namespace extension {
         // 1) is dictionary entry
         // 2) has key m which maps to a dictionary entry
 
-        // Add m keys for extended message ids
-        libtorrent::entry::dictionary_type & m = handshake["m"].dict();
-
-        // If sessino is stopped, then we only send uninstall mapping, at most
-        if(_plugin->sessionState() == protocol_session::SessionState::stopped) {
-
-            // If this is first handshake after stopping the session, then
-            // and uninstall mapping is sent
-            if(_sendUninstallMappingOnNextExtendedHandshake) {
-
-                // Write uninstall mapping
-                // May throw exception::MessageAlreadyPresentException if
-                // plugin is being used incorrectly by developer
-                ExtendedMessageIdMapping::writeUninstallMappingToMDictionary(m);
-
-                // Don't do on next handshake
-                _sendUninstallMappingOnNextExtendedHandshake = false;
-            } else {
-              // Send empty mapping
-              return;
-            }
-
-        } else {
-
-            assert(!_sendUninstallMappingOnNextExtendedHandshake);
-            assert(!_clientMapping.empty());
-
-            // Write proper mapping to dictionary
-            // May throw exception::MessageAlreadyPresentException if
-            // plugin is being used incorrectly by developer
-            _clientMapping.writeToMDictionary(m);
+        // If plugin is stopped and we don't need to send an uninstall mapping
+        // don't add anything to the handshake
+        // As if the extension is not installed
+        if(_plugin->sessionState() == protocol_session::SessionState::stopped &&
+           !_sendUninstallMappingOnNextExtendedHandshake) {
+            return;
         }
+
+        // Get reference to m keys for extended message ids
+        libtorrent::entry::dictionary_type & m = handshake["m"].dict();
 
         // Add top level key for extension which encodes protocol version
         handshake[BEP10_EXTENSION_NAME] = protocol_statemachine::CBStateMachine::protocolVersion.toString();
+
+        // If this is first handshake after stopping the session, then
+        // an uninstall mapping is sent
+        if( _plugin->sessionState() == protocol_session::SessionState::stopped) {
+          assert(_sendUninstallMappingOnNextExtendedHandshake);
+
+          // Write uninstall mapping
+          // May throw exception::MessageAlreadyPresentException if
+          // plugin is being used incorrectly by developer
+          ExtendedMessageIdMapping::writeUninstallMappingToMDictionary(m);
+
+          // Don't do on next handshake
+          _sendUninstallMappingOnNextExtendedHandshake = false;
+
+        } else {
+          // Send full mapping
+          assert(!_sendUninstallMappingOnNextExtendedHandshake);
+          assert(!_clientMapping.empty());
+
+          // Write proper mapping to dictionary
+          // May throw exception::MessageAlreadyPresentException if
+          // plugin is being used incorrectly by developer
+          _clientMapping.writeToMDictionary(m);
+        }
     }
 
     void PeerPlugin::on_disconnect(libtorrent::error_code const & ec) {
@@ -209,6 +211,15 @@ namespace extension {
             // Mark peer as not supporting this extension
             _peerPaymentBEPSupportStatus = BEPSupportStatus::not_supported;
 
+            if(!_peerMapping.empty()) {
+                // Peer has previosly signaled support for the extension and sent a full mapping
+                // If the version string is not in the extension, it has not properly sent an unmapping
+
+                // Remove peer
+                libtorrent::error_code ec; // "Malformed protocol version format provided: " << versionString
+                drop(ec);
+            }
+
             // Keep plugin around
             return true;
         }
@@ -261,54 +272,63 @@ namespace extension {
             return true;
         }
 
-        // Get peer mapping
+        bool peerMappingWasPreviouslySet = !_peerMapping.empty();
+
         try {
 
             // Store fully valid (non-uninstall) mapping of peer
             _peerMapping = ExtendedMessageIdMapping::fromMDictionary(m);
 
-        } catch(const exception::InvalidMessageMappingDictionary & e) {
-
-            if(e.problem == exception::InvalidMessageMappingDictionary::Problem::UninstallMappingFound) {
-
-                std::clog << "Uninstall mapping found." << std::endl;
-
-                // If peer hasn't previously sent a valid mapping,
-                // then it is misbehaving
-                if(_peerMapping.empty()) {
-
-                    // Remove peer
-                    libtorrent::error_code ec; // "Peer misbehaved: sent uninstall mapping, despite not recently annoncing valid mapping to uninstall."
-                    drop(ec);
-
-                    // Keep us around
-                    return true;
-                }
-
-                // Discard old mapping
-                _peerMapping.clear();
+            // Peer should not send a full mapping more than once
+            if (peerMappingWasPreviouslySet) {
+                // Peer is misbehaving
 
                 // Mark peer as not supporting this extension
                 _peerPaymentBEPSupportStatus  = BEPSupportStatus::not_supported;
 
-                // Remove from session, if present
-                _plugin->removeFromSession(_endPoint);
-
-                return true;
-
-            } else {
-
                 // Remove peer
-                libtorrent::error_code ec;
+                libtorrent::error_code ec; // "Peer misbehaved: sent uninstall mapping, despite not recently annoncing valid mapping to uninstall."
                 drop(ec);
 
-                // Keep us around
                 return true;
             }
 
+        } catch(const exception::InvalidMessageMappingDictionary & e) {
+
+            // disconnect the peer by default
+            bool doPeerDisconnect = true;
+
+            // If the uninstall mapping was valid we do not need to disconnect the peer
+            if(e.problem == exception::InvalidMessageMappingDictionary::Problem::UninstallMappingFound) {
+               if(peerMappingWasPreviouslySet) {
+                    std::clog << "Uninstall mapping was found." << std::endl;
+                    doPeerDisconnect = false;
+               } else {
+                    std::clog << "Uninstall mapping was found, but no mapping has been previoulsy installed" << std::endl;
+               }
+            }
+
+            // Discard old mapping
+            _peerMapping.clear();
+
+            // Mark peer as not supporting this extension
+            _peerPaymentBEPSupportStatus  = BEPSupportStatus::not_supported;
+
+            // Remove from session, if present
+            _plugin->removeFromSession(_endPoint);
+
+            if(doPeerDisconnect) {
+                libtorrent::error_code ec;
+                drop(ec);
+            }
+
+            // Keep us around
+            return true;
         }
 
         std::clog << "Found extension handshake for peer " << libtorrent::print_endpoint(_endPoint) << std::endl;
+
+        assert(!peerMappingWasPreviouslySet);
 
         // All messages were present, hence the protocol is supported
         _peerPaymentBEPSupportStatus = BEPSupportStatus::supported;
