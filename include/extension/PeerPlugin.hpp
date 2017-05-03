@@ -184,12 +184,12 @@ namespace status {
 
         void setSendUninstallMappingOnNextExtendedHandshake(bool);
 
-        /**
-        bool peerTimedOut(int maxDelay) const;
-
         BEPSupportStatus peerBEP10SupportStatus() const;
 
-        BEPSupportStatus peerBitSwaprBEPSupportStatus() const;
+        BEPSupportStatus peerPaymentBEPSupportStatus() const;
+
+        /**
+        bool peerTimedOut(int maxDelay) const;
 
         libtorrent::tcp::endpoint endPoint() const;
 
