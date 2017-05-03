@@ -295,6 +295,20 @@ struct StartUploading {
     SubroutineHandler handler;
 };
 
+struct SetLibtorrentInteraction {
+    SetLibtorrentInteraction() {}
+    SetLibtorrentInteraction(const libtorrent::sha1_hash & infoHash,
+                             const TorrentPlugin::LibtorrentInteraction libtorrentInteraction,
+                             const SubroutineHandler & handler)
+      :   infoHash(infoHash)
+        , libtorrentInteraction(libtorrentInteraction)
+        , handler(handler) {}
+
+    libtorrent::sha1_hash infoHash;
+    TorrentPlugin::LibtorrentInteraction libtorrentInteraction;
+    SubroutineHandler handler;
+};
+
 /**
 struct ChangeDownloadLocation : public TorrentPluginRequest {
     typedef SubroutineResult<ChangeDownloadLocation> Result;

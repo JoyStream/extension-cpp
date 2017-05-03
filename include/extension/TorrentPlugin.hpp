@@ -169,7 +169,20 @@ private:
 
     // Determines the message type, calls correct handler, then frees message
     template<class M>
-    void processExtendedMessage(const libtorrent::tcp::endpoint &, const M & extendedMessage);
+    void processExtendedMessage(const libtorrent::tcp::endpoint & endPoint, const M &extendedMessage){
+
+        if(_session.mode() == protocol_session::SessionMode::not_set) {
+            std::clog << "Ignoring extended message - session mode not set" << std::endl;
+            return;
+        }
+
+        if(!_session.hasConnection(endPoint)) {
+            std::clog << "Ignoring extended message - connection already removed from session" << std::endl;
+            return;
+        }
+        // Have session process message
+        _session.processMessageOnConnection<M>(endPoint, extendedMessage);
+    }
 
     /// Protocol session hooks
 

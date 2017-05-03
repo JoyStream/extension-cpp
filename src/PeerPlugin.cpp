@@ -70,37 +70,42 @@ namespace extension {
         // 1) is dictionary entry
         // 2) has key m which maps to a dictionary entry
 
+        // If plugin is stopped and we don't need to send an uninstall mapping
+        // don't add anything to the handshake
+        // As if the extension is not installed
+        if(_plugin->sessionState() == protocol_session::SessionState::stopped &&
+           !_sendUninstallMappingOnNextExtendedHandshake) {
+            return;
+        }
+
+        // Get reference to m keys for extended message ids
+        libtorrent::entry::dictionary_type & m = handshake["m"].dict();
+
         // Add top level key for extension which encodes protocol version
         handshake[BEP10_EXTENSION_NAME] = protocol_statemachine::CBStateMachine::protocolVersion.toString();
 
-        // Add m keys for extended message ids
-        libtorrent::entry::dictionary_type & m = handshake["m"].dict();
+        // If this is first handshake after stopping the session, then
+        // an uninstall mapping is sent
+        if( _plugin->sessionState() == protocol_session::SessionState::stopped) {
+          assert(_sendUninstallMappingOnNextExtendedHandshake);
 
-        // If sessino is stopped, then we only send uninstall mapping, at most
-        if(_plugin->sessionState() == protocol_session::SessionState::stopped) {
+          // Write uninstall mapping
+          // May throw exception::MessageAlreadyPresentException if
+          // plugin is being used incorrectly by developer
+          ExtendedMessageIdMapping::writeUninstallMappingToMDictionary(m);
 
-            // If this is first handshake after stopping the session, then
-            // and uninstall mapping is sent
-            if(_sendUninstallMappingOnNextExtendedHandshake) {
-
-                // Write uninstall mapping
-                // May throw exception::MessageAlreadyPresentException if
-                // plugin is being used incorrectly by developer
-                ExtendedMessageIdMapping::writeUninstallMappingToMDictionary(m);
-
-                // Don't do on next handshake
-                _sendUninstallMappingOnNextExtendedHandshake = false;
-            }
+          // Don't do on next handshake
+          _sendUninstallMappingOnNextExtendedHandshake = false;
 
         } else {
+          // Send full mapping
+          assert(!_sendUninstallMappingOnNextExtendedHandshake);
+          assert(!_clientMapping.empty());
 
-            assert(!_sendUninstallMappingOnNextExtendedHandshake);
-            assert(!_clientMapping.empty());
-
-            // Write proper mapping to dictionary
-            // May throw exception::MessageAlreadyPresentException if
-            // plugin is being used incorrectly by developer
-            _clientMapping.writeToMDictionary(m);
+          // Write proper mapping to dictionary
+          // May throw exception::MessageAlreadyPresentException if
+          // plugin is being used incorrectly by developer
+          _clientMapping.writeToMDictionary(m);
         }
     }
 
@@ -206,6 +211,15 @@ namespace extension {
             // Mark peer as not supporting this extension
             _peerPaymentBEPSupportStatus = BEPSupportStatus::not_supported;
 
+            if(!_peerMapping.empty()) {
+                // Peer has previosly signaled support for the extension and sent a full mapping
+                // If the version string is not in the extension, it has not properly sent an unmapping
+
+                // Remove peer
+                libtorrent::error_code ec; // "Malformed protocol version format provided: " << versionString
+                drop(ec);
+            }
+
             // Keep plugin around
             return true;
         }
@@ -258,54 +272,63 @@ namespace extension {
             return true;
         }
 
-        // Get peer mapping
+        bool peerMappingWasPreviouslySet = !_peerMapping.empty();
+
         try {
 
             // Store fully valid (non-uninstall) mapping of peer
             _peerMapping = ExtendedMessageIdMapping::fromMDictionary(m);
 
-        } catch(const exception::InvalidMessageMappingDictionary & e) {
-
-            if(e.problem == exception::InvalidMessageMappingDictionary::Problem::UninstallMappingFound) {
-
-                std::clog << "Uninstall mapping found." << std::endl;
-
-                // If peer hasn't previously sent a valid mapping,
-                // then it is misbehaving
-                if(_peerMapping.empty()) {
-
-                    // Remove peer
-                    libtorrent::error_code ec; // "Peer misbehaved: sent uninstall mapping, despite not recently annoncing valid mapping to uninstall."
-                    drop(ec);
-
-                    // Keep us around
-                    return true;
-                }
-
-                // Discard old mapping
-                _peerMapping.clear();
+            // Peer should not send a full mapping more than once
+            if (peerMappingWasPreviouslySet) {
+                // Peer is misbehaving
 
                 // Mark peer as not supporting this extension
                 _peerPaymentBEPSupportStatus  = BEPSupportStatus::not_supported;
 
-                // Remove from session, if present
-                _plugin->removeFromSession(_endPoint);
-
-                return true;
-
-            } else {
-
                 // Remove peer
-                libtorrent::error_code ec;
+                libtorrent::error_code ec; // "Peer misbehaved: sent uninstall mapping, despite not recently annoncing valid mapping to uninstall."
                 drop(ec);
 
-                // Keep us around
                 return true;
             }
 
+        } catch(const exception::InvalidMessageMappingDictionary & e) {
+
+            // disconnect the peer by default
+            bool doPeerDisconnect = true;
+
+            // If the uninstall mapping was valid we do not need to disconnect the peer
+            if(e.problem == exception::InvalidMessageMappingDictionary::Problem::UninstallMappingFound) {
+               if(peerMappingWasPreviouslySet) {
+                    std::clog << "Uninstall mapping was found." << std::endl;
+                    doPeerDisconnect = false;
+               } else {
+                    std::clog << "Uninstall mapping was found, but no mapping has been previoulsy installed" << std::endl;
+               }
+            }
+
+            // Discard old mapping
+            _peerMapping.clear();
+
+            // Mark peer as not supporting this extension
+            _peerPaymentBEPSupportStatus  = BEPSupportStatus::not_supported;
+
+            // Remove from session, if present
+            _plugin->removeFromSession(_endPoint);
+
+            if(doPeerDisconnect) {
+                libtorrent::error_code ec;
+                drop(ec);
+            }
+
+            // Keep us around
+            return true;
         }
 
         std::clog << "Found extension handshake for peer " << libtorrent::print_endpoint(_endPoint) << std::endl;
+
+        assert(!peerMappingWasPreviouslySet);
 
         // All messages were present, hence the protocol is supported
         _peerPaymentBEPSupportStatus = BEPSupportStatus::supported;
@@ -328,22 +351,22 @@ namespace extension {
 
     bool PeerPlugin::on_have(int) {
         assert(!_undead);
-        return true; // overrid default handler
+        return false;
     }
 
     bool PeerPlugin::on_bitfield(libtorrent::bitfield const &) {
         assert(!_undead);
-        return true; // overrid default handler
+        return false;
     }
 
     bool PeerPlugin::on_have_all() {
         assert(!_undead);
-        return true; // overrid default handler
+        return false;
     }
 
     bool PeerPlugin::on_reject(libtorrent::peer_request const &) {
         assert(!_undead);
-        return true; // overrid default handler
+        return false;
     }
 
     bool PeerPlugin::on_request(libtorrent::peer_request const &) {
@@ -361,32 +384,32 @@ namespace extension {
 
     bool PeerPlugin::on_unchoke() {
         assert(!_undead);
-        return true; // overrid default handler
+        return false;
     }
 
     bool PeerPlugin::on_interested() {
         assert(!_undead);
-        return true; // overrid default handler
+        return false;
     }
 
     bool PeerPlugin::on_allowed_fast(int) {
         assert(!_undead);
-        return true; // overrid default handler
+        return false;
     }
 
     bool PeerPlugin::on_have_none() {
         assert(!_undead);
-        return true; // overrid default handler
+        return false;
     }
 
     bool PeerPlugin::on_choke() {
         assert(!_undead);
-        return true; // overrid default handler
+        return false;
     }
 
     bool PeerPlugin::on_not_interested() {
         assert(!_undead);
-        return true; // overrid default handler
+        return false;
     }
 
     bool PeerPlugin::on_piece(libtorrent::peer_request const &, libtorrent::disk_buffer_holder &) {
@@ -404,17 +427,17 @@ namespace extension {
 
     bool PeerPlugin::on_suggest(int) {
         assert(!_undead);
-        return true; // overrid default handler
+        return false;
     }
 
     bool PeerPlugin::on_cancel(libtorrent::peer_request const &) {
         assert(!_undead);
-        return true; // overrid default handler
+        return false;
     }
 
     bool PeerPlugin::on_dont_have(int) {
         assert(!_undead);
-        return true; // overrid default handler
+        return false;
     }
 
     bool PeerPlugin::can_disconnect(libtorrent::error_code const &) {
@@ -437,20 +460,21 @@ namespace extension {
         }
         */
 
-        // If this peer is not part of this session, then
-        // we ignore the message and ask all other plugins to do the same.
-        // This could happen if the peer is malicious, or if the connection .... <what here?>
+        // If this peer is not part of this session, then we ignore the message
         if(_plugin->_session.mode() == protocol_session::SessionMode::not_set) {
             std::clog << "Ignoring extended message, session mode not set" << std::endl;
-            return true;
+            return false;
         }
 
         if(!_plugin->_session.hasConnection(_endPoint)) {
             std::clog << "Ignoring extended message, connection not in session" << std::endl;
-            return true;
+            return false;
         }
 
         assert(_peerPaymentBEPSupportStatus == BEPSupportStatus::supported);
+
+        // Ignore message if peer has not successfully completed BEP43 handshake (yet, or perhaps never will)
+        if(_peerPaymentBEPSupportStatus != BEPSupportStatus::supported) return false;
 
         // Length of extended message, excluding the bep 10 id and extended message id.
         int lengthOfMessage = body.left();
@@ -466,15 +490,6 @@ namespace extension {
 
         } else
             std::clog << "on_extended(id =" << msg << ", length =" << length << ")" << std::endl;
-
-        // Ignore message if peer has not successfully completed BEP43 handshake (yet, or perhaps never will)
-        if(_peerPaymentBEPSupportStatus != BEPSupportStatus::supported) {
-
-            std::clog << "Received extended message despite BEP43 not supported, not for this plugin then, letting another plugin handle it." << std::endl;
-
-            // Let next plugin handle message
-            return false;
-        }
 
         // Is it a message for this extension?
         MessageType messageType;
@@ -565,7 +580,7 @@ namespace extension {
     bool PeerPlugin::on_unknown_message(int, int, libtorrent::buffer::const_interval) {
         assert(!_undead);
 
-        return true; // allow other handlers to process
+        return false; // allow other handlers to process
     }
 
     void PeerPlugin::on_piece_pass(int) {
@@ -597,36 +612,6 @@ namespace extension {
             return false; // allow sending request
     }
 
-    template<class T>
-    void PeerPlugin::send(const T& payload) {
-        const auto size = protocol_wire::OutputWireStream::sizeOf(payload);
-
-        auto messageType = getMessageType(payload);
-
-        ExtendedMessage m(size, _peerMapping.id(messageType));
-
-        protocol_wire::OutputWireStream writer(m.payloadBuf());
-
-        std::streamsize written = 0;
-
-        try {
-            written = writer.write(payload);
-        } catch(std::exception &e) {
-            std::clog << "Error writing message payload, message not sent." << std::endl;
-            return;
-        }
-
-        if(size != written) {
-            std::clog << "Error payload not fully written, message not sent." << std::endl;
-            return;
-        }
-
-        // Send message buffer
-        m.send(_connection);
-
-        std::clog << "SENT:" << getMessageName(messageType) << " = " << written << "bytes" << std::endl;
-    }
-
     status::PeerPlugin PeerPlugin::status(const boost::optional<protocol_session::status::Connection<libtorrent::tcp::endpoint>> & connections) const {
         return status::PeerPlugin(_endPoint,
                                   _peerBEP10SupportStatus,
@@ -652,6 +637,14 @@ namespace extension {
 
     void PeerPlugin::drop(const libtorrent::error_code & ec) {
         _plugin->drop(_endPoint, ec);
+    }
+
+    BEPSupportStatus PeerPlugin::peerBEP10SupportStatus() const {
+      return _peerBEP10SupportStatus;
+    }
+
+    BEPSupportStatus PeerPlugin::peerPaymentBEPSupportStatus() const {
+      return _peerPaymentBEPSupportStatus;
     }
 
     /**

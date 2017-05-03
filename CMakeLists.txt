@@ -27,6 +27,7 @@ set(
     src/AlertManager.cpp
     src/MessageType.cpp
     src/ExtendedMessage.cpp
+    src/Common.cpp
 )
 
 # === build library ===

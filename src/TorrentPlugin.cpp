@@ -271,9 +271,20 @@ void TorrentPlugin::start() {
 
     // If session was initially stopped (not paused), then initiate extended handshake
     if(initialState == protocol_session::SessionState::stopped)
-        forEachBitTorrentConnection([](libtorrent::bt_peer_connection *c) -> void {
-            if(c->support_extensions())
+        forEachBitTorrentConnection([this](libtorrent::bt_peer_connection *c) -> void {
+            if(c->support_extensions()) {
                 c->write_extensions();
+
+                auto endPoint = c->remote();
+
+                // In a stopped state we would not have added the peer to our session
+                assert(!_session.hasConnection(endPoint));
+
+                auto p = peer(endPoint);
+                // Add peer that has sent us a valid extended handshake when we were in stopped state
+                if (p->peerPaymentBEPSupportStatus() == BEPSupportStatus::supported)
+                  addToSession(endPoint);
+            }
         });
 }
 
@@ -423,7 +434,7 @@ std::map<libtorrent::tcp::endpoint, boost::weak_ptr<PeerPlugin> > TorrentPlugin:
 
 status::TorrentPlugin TorrentPlugin::status() const {
 
-    return status::TorrentPlugin(_infoHash, _session.status());
+    return status::TorrentPlugin(_infoHash, _session.status(), libtorrentInteraction());
 }
 
 TorrentPlugin::LibtorrentInteraction TorrentPlugin::libtorrentInteraction() const {
@@ -493,24 +504,6 @@ void TorrentPlugin::forEachBitTorrentConnection(const std::function<void(libtorr
 }
 
 void TorrentPlugin::setLibtorrentInteraction(LibtorrentInteraction e) {
-
-    // Send messages for starting to prevent uploading
-    if(e == LibtorrentInteraction::BlockUploading ||
-       e == LibtorrentInteraction::BlockUploadingAndDownloading) {
-
-        // For each peer: sending (once) CHOCKED message in order to discourage inbound requests.
-        forEachBitTorrentConnection([](libtorrent::bt_peer_connection *c) -> void { c->write_choke(); });
-    }
-
-    // Send messages for starting to prevent uploading
-    if(e == LibtorrentInteraction::BlockDownloading ||
-       e == LibtorrentInteraction::BlockUploadingAndDownloading) {
-
-        // For each peer: sending (once) NOT-INTERESTED and CHOCKED message in order to discourage unchocking.
-        forEachBitTorrentConnection([](libtorrent::bt_peer_connection *c) -> void { c->write_not_interested(); c->write_choke(); });
-
-    }
-
     _libtorrentInteraction = e;
 }
 
@@ -661,22 +654,6 @@ void TorrentPlugin::drop(const libtorrent::tcp::endpoint & endPoint, const libto
     auto it = _peers.find(endPoint);
     if(it != _peers.cend())
         _peers.erase(it);
-}
-
-template<class M>
-void TorrentPlugin::processExtendedMessage(const libtorrent::tcp::endpoint & endPoint, const M &extendedMessage){
-
-    if(_session.mode() == protocol_session::SessionMode::not_set) {
-        std::clog << "Ignoring extended message - session mode not set" << std::endl;
-        return;
-    }
-
-    if(!_session.hasConnection(endPoint)) {
-        std::clog << "Ignoring extended message - connection already removed from session" << std::endl;
-        return;
-    }
-    // Have session process message
-    _session.processMessageOnConnection<M>(endPoint, extendedMessage);
 }
 
 protocol_session::RemovedConnectionCallbackHandler<libtorrent::tcp::endpoint> TorrentPlugin::removeConnection() {
