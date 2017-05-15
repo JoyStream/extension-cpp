@@ -156,20 +156,38 @@ private:
     // Friendship required to process peer_plugin events
     friend class PeerPlugin;
 
+    void outgoingConnectionEstablished(PeerPlugin*);
+
+    void peerDisconnected(PeerPlugin*, libtorrent::error_code const & ec);
+
+    bool isConnectedEndpoint(PeerPlugin*);
+
+    void addToSession(PeerPlugin*);
+
     // Adds peer correspoinding to given endpoint to session,
     // is called when peer has sucessfully completed extended handshake.
     // Not when connection is established, as in TorrentPlugin::new_connection
     void addToSession(const libtorrent::tcp::endpoint &);
 
+    void removeFromSession(PeerPlugin*);
+
     // Removes peer from session, if present
     void removeFromSession(const libtorrent::tcp::endpoint &);
 
+    void drop(PeerPlugin*, const libtorrent::error_code &);
+
     // Disconnects peer, removes corresponding plugin from map
-    void drop(const libtorrent::tcp::endpoint &, const libtorrent::error_code &, bool disconnect = true);
+    void drop(const libtorrent::tcp::endpoint &, const libtorrent::error_code &);
 
     // Determines the message type, calls correct handler, then frees message
     template<class M>
-    void processExtendedMessage(const libtorrent::tcp::endpoint & endPoint, const M &extendedMessage){
+    void processExtendedMessage(PeerPlugin* peerPlugin, const M &extendedMessage){
+        auto endPoint = peerPlugin->connection().remote();
+
+        if(!isConnectedEndpoint(peerPlugin)) {
+            std::clog << "Ignoring extended message - not active connection" << std::endl;
+            return;
+        }
 
         if(_session.mode() == protocol_session::SessionMode::not_set) {
             std::clog << "Ignoring extended message - session mode not set" << std::endl;
@@ -180,6 +198,7 @@ private:
             std::clog << "Ignoring extended message - connection already removed from session" << std::endl;
             return;
         }
+
         // Have session process message
         _session.processMessageOnConnection<M>(endPoint, extendedMessage);
     }
@@ -240,6 +259,8 @@ private:
     // your own peer_plugin. If you want to keep references to it, use weak_ptr.
     // NB: All peers are added, while not all are added to _session, see below.
     std::map<libtorrent::tcp::endpoint, boost::weak_ptr<PeerPlugin> > _peers;
+
+    std::map<PeerPlugin*, boost::weak_ptr<PeerPlugin> > _peerPlugins;
 
     // Protocol session
     // Q: What peers are in session, and what are not.

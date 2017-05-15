@@ -66,16 +66,18 @@ boost::shared_ptr<libtorrent::peer_plugin> TorrentPlugin::new_connection(const l
               << libtorrent::print_endpoint(endPoint)
               << std::endl; // << "on " << _torrent->name().c_str();
 
+    // ec <-- later put actual error in here, dont just log
+
+    // We are not interested in managing non bittorrent connections
+    if(connection.type() != libtorrent::peer_connection::bittorrent_connection) {
+        std::clog << "Peer was not BitTorrent client, likely web seed." << std::endl;
+        return boost::shared_ptr<PeerPlugin>(nullptr);
+    }
+
     // Screen connection
     bool allow = false; // <-- drop when ec can be used
 
-    // ec <-- later put actual error in here, dont just log
-
-    //if(connection.type() != libtorrent::peer_connection::bittorrent_connection)
-    //    std::clog << "Peer was not BitTorrent client, likely web seed." << std::endl;
-    if(_peers.count(endPoint))
-        std::clog << "Peer already added." << std::endl;
-    else if(_sentMalformedExtendedMessage.count(endPoint) && _policy.banPeersWithPastMalformedExtendedMessage)
+    if(_sentMalformedExtendedMessage.count(endPoint) && _policy.banPeersWithPastMalformedExtendedMessage)
         std::clog << "Peer has previously sent malformed extended message." << std::endl;
     else if(_misbehavedPeers.count(endPoint) && _policy.banPeersWithPastMisbehavior)
         std::clog << "Peer has previously misbehaved." << std::endl;
@@ -84,8 +86,13 @@ boost::shared_ptr<libtorrent::peer_plugin> TorrentPlugin::new_connection(const l
 
     // If connection should not be accepted,
     if(!allow) {
-        // and don't install plugin
-        return boost::shared_ptr<PeerPlugin>(nullptr);
+        // and don't install plugin, throw excption so libtorrent will disconnect the peer
+        throw std::runtime_error("Peer Rejected");
+    }
+
+    // Only allow one active connection per endpoint
+    if(_peers.count(endPoint)) {
+      throw std::runtime_error("Peer Already Connected");
     }
 
     std::clog << "Installed peer plugin #" << _peers.size() << std::endl;
@@ -96,14 +103,55 @@ boost::shared_ptr<libtorrent::peer_plugin> TorrentPlugin::new_connection(const l
     // Wrap for return to libtorrent
     boost::shared_ptr<PeerPlugin> plugin(rawPeerPlugin);
 
-    // Add to collection
-    _peers[endPoint] = boost::weak_ptr<PeerPlugin>(plugin);
+    // Create a weak pointer to the peer plugin
+    auto weakPeerPlugin = boost::weak_ptr<PeerPlugin>(plugin);
 
-    // Send alert notification
-    _alertManager->emplace_alert<alert::PeerPluginAdded>(_torrent, endPoint, connection.pid(), rawPeerPlugin->status(boost::optional<protocol_session::status::Connection<libtorrent::tcp::endpoint>>()));
+    // Add to collection
+    _peerPlugins[rawPeerPlugin] = weakPeerPlugin;
+
+    if(!connection.is_connecting()) {
+      _peers[endPoint] = weakPeerPlugin;
+      _alertManager->emplace_alert<alert::PeerPluginAdded>(_torrent, endPoint, connection.pid(), rawPeerPlugin->status(boost::optional<protocol_session::status::Connection<libtorrent::tcp::endpoint>>()));
+    }
 
     // Return pointer to plugin as required
     return plugin;
+}
+
+void TorrentPlugin::outgoingConnectionEstablished(PeerPlugin* peerPlugin) {
+  assert(_peerPlugins.count(peerPlugin));
+
+  auto endPoint = peerPlugin->connection().remote();
+
+  // Only one active connection per endpoint
+  if(_peers.count(endPoint)) {
+    libtorrent::error_code ec;
+    peerPlugin->connection().disconnect(ec, libtorrent::operation_t::op_bittorrent);
+    return;
+  }
+
+  _peers[endPoint] = _peerPlugins[peerPlugin];
+  _alertManager->emplace_alert<alert::PeerPluginAdded>(_torrent, endPoint, peerPlugin->connection().pid(), peerPlugin->status(boost::optional<protocol_session::status::Connection<libtorrent::tcp::endpoint>>()));
+}
+
+void TorrentPlugin::peerDisconnected(PeerPlugin* peerPlugin, libtorrent::error_code const & ec) {
+  assert(_peerPlugins.count(peerPlugin));
+
+  auto endPoint = peerPlugin->connection().remote();
+
+  // Check if the peer is an active connection
+  if(isConnectedEndpoint(peerPlugin)) {
+    _alertManager->emplace_alert<alert::PeerPluginRemoved>(_torrent, endPoint, peerPlugin->connection().pid());
+    removeFromSession(endPoint);
+    _peers.erase(endPoint);
+  }
+
+  _peerPlugins.erase(peerPlugin);
+}
+
+bool TorrentPlugin::isConnectedEndpoint(PeerPlugin* peerPlugin) {
+  auto endPoint = peerPlugin->connection().remote();
+  return _peers.count(endPoint) && peerPlugin == _peers[endPoint].lock().get();
 }
 
 void TorrentPlugin::on_piece_pass(int index) {
@@ -515,6 +563,16 @@ const protocol_session::Session<libtorrent::tcp::endpoint> & TorrentPlugin::sess
     return _session;
 }
 
+void TorrentPlugin::addToSession(PeerPlugin* peerPlugin) {
+  assert(_peerPlugins.count(peerPlugin));
+
+  auto endPoint = peerPlugin->connection().remote();
+
+  if(isConnectedEndpoint(peerPlugin)) {
+    addToSession(endPoint);
+  }
+}
+
 void TorrentPlugin::addToSession(const libtorrent::tcp::endpoint & endPoint) {
 
     // quick fix: gaurd call to hasConnection
@@ -606,6 +664,16 @@ void TorrentPlugin::addToSession(const libtorrent::tcp::endpoint & endPoint) {
     _alertManager->emplace_alert<alert::ConnectionAddedToSession>(_torrent, endPoint, plugin->connection().pid(), connectionStatus);
 }
 
+void TorrentPlugin::removeFromSession(PeerPlugin* peerPlugin) {
+  assert(_peerPlugins.count(peerPlugin));
+
+  auto endPoint = peerPlugin->connection().remote();
+
+  if(isConnectedEndpoint(peerPlugin)) {
+    removeFromSession(endPoint);
+  }
+}
+
 void TorrentPlugin::removeFromSession(const libtorrent::tcp::endpoint & endPoint) {
     if(_session.mode() == protocol_session::SessionMode::not_set)
         return;
@@ -624,7 +692,16 @@ void TorrentPlugin::removeFromSession(const libtorrent::tcp::endpoint & endPoint
     }
 }
 
-void TorrentPlugin::drop(const libtorrent::tcp::endpoint & endPoint, const libtorrent::error_code & ec, bool disconnect)  {
+void TorrentPlugin::drop(PeerPlugin * peerPlugin, const libtorrent::error_code & ec) {
+  if(peerPlugin->undead())
+    return;
+
+  peerPlugin->setUndead(true);
+
+  peerPlugin->connection().disconnect(ec, libtorrent::operation_t::op_bittorrent);
+}
+
+void TorrentPlugin::drop(const libtorrent::tcp::endpoint & endPoint, const libtorrent::error_code & ec)  {
 
     if(ec) {
         // log string version: std::clog << "Malformed handshake received: m key not mapping to dictionary.";
@@ -644,16 +721,7 @@ void TorrentPlugin::drop(const libtorrent::tcp::endpoint & endPoint, const libto
     // peer will get disconnected by libtorrent when it calls can_connect on the peer plugin
     peerPlugin->setUndead(true);
 
-    if(disconnect)
-        peerPlugin->connection().disconnect(ec, libtorrent::operation_t::op_bittorrent);
-
-    // Remove from session if present
-    removeFromSession(endPoint);
-
-    // Remove from map
-    auto it = _peers.find(endPoint);
-    if(it != _peers.cend())
-        _peers.erase(it);
+    peerPlugin->connection().disconnect(ec, libtorrent::operation_t::op_bittorrent);
 }
 
 protocol_session::RemovedConnectionCallbackHandler<libtorrent::tcp::endpoint> TorrentPlugin::removeConnection() {

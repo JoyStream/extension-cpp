@@ -51,11 +51,7 @@ namespace extension {
     }
 
     PeerPlugin::~PeerPlugin() {
-
         std::clog << "~PeerPlugin() called." << std::endl;
-
-        // Send removal notification
-        _alertManager->emplace_alert<alert::PeerPluginRemoved>(_torrent, _endPoint, _standardHandshakePeerId);
     }
 
     char const* PeerPlugin::type() const {
@@ -113,18 +109,15 @@ namespace extension {
 
         std::clog << "on_disconnect ["<< (_connection.is_outgoing() ? "outgoing" : "incoming") << "]:" << ec.message().c_str() << std::endl;
 
-        // If connection is undead, then this callback should be ignored.
-        if(_undead)
-            return;
-
-        // Otherwise, the disconnect was iniated by peer, and we should notify
-        // the torrent plugin.
-        _plugin->drop(_endPoint, ec, false);
+        // notify the torrent plugin.
+        _plugin->peerDisconnected(this, ec);
     }
 
     void PeerPlugin::on_connected() {
 
         assert(!_undead);
+
+        _plugin->outgoingConnectionEstablished(this);
     }
 
     bool PeerPlugin::on_handshake(char const * reserved_bits) {
@@ -315,7 +308,7 @@ namespace extension {
             _peerPaymentBEPSupportStatus  = BEPSupportStatus::not_supported;
 
             // Remove from session, if present
-            _plugin->removeFromSession(_endPoint);
+            _plugin->removeFromSession(this);
 
             if(doPeerDisconnect) {
                 libtorrent::error_code ec;
@@ -340,7 +333,7 @@ namespace extension {
 
             // NB: in the future, supply _protocolVersionOfPeer to session?
 
-            _plugin->addToSession(_endPoint);
+            _plugin->addToSession(this);
 
         } else
             std::clog << "Peer not added to stopped session" << std::endl;
@@ -524,39 +517,39 @@ namespace extension {
         try {
             switch(messageType) {
                 case MessageType::observe : {
-                    _plugin->processExtendedMessage<>(_endPoint, stream.readObserve());
+                    _plugin->processExtendedMessage<>(this, stream.readObserve());
                     break;
                 }
                 case MessageType::buy : {
-                    _plugin->processExtendedMessage<>(_endPoint, stream.readBuy());
+                    _plugin->processExtendedMessage<>(this, stream.readBuy());
                     break;
                 }
                 case MessageType::sell : {
-                    _plugin->processExtendedMessage<>(_endPoint, stream.readSell());
+                    _plugin->processExtendedMessage<>(this, stream.readSell());
                     break;
                 }
                 case MessageType::join_contract : {
-                    _plugin->processExtendedMessage<>(_endPoint, stream.readJoinContract());
+                    _plugin->processExtendedMessage<>(this, stream.readJoinContract());
                     break;
                 }
                 case MessageType::joining_contract : {
-                    _plugin->processExtendedMessage<>(_endPoint, stream.readJoiningContract());
+                    _plugin->processExtendedMessage<>(this, stream.readJoiningContract());
                     break;
                 }
                 case MessageType::ready : {
-                    _plugin->processExtendedMessage<>(_endPoint, stream.readReady());
+                    _plugin->processExtendedMessage<>(this, stream.readReady());
                     break;
                 }
                 case MessageType::request_full_piece : {
-                    _plugin->processExtendedMessage<>(_endPoint, stream.readRequestFullPiece());
+                    _plugin->processExtendedMessage<>(this, stream.readRequestFullPiece());
                     break;
                 }
                 case MessageType::full_piece : {
-                    _plugin->processExtendedMessage<>(_endPoint, stream.readFullPiece());
+                    _plugin->processExtendedMessage<>(this, stream.readFullPiece());
                     break;
                 }
                 case MessageType::payment : {
-                    _plugin->processExtendedMessage<>(_endPoint, stream.readPayment());
+                    _plugin->processExtendedMessage<>(this, stream.readPayment());
                     break;
                 }
                 default:
@@ -636,7 +629,7 @@ namespace extension {
     }
 
     void PeerPlugin::drop(const libtorrent::error_code & ec) {
-        _plugin->drop(_endPoint, ec);
+        _plugin->drop(this, ec);
     }
 
     BEPSupportStatus PeerPlugin::peerBEP10SupportStatus() const {
