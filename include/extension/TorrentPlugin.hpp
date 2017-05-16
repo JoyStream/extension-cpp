@@ -164,6 +164,8 @@ private:
 
     void addToSession(PeerPlugin*);
 
+    bool sessionHasConnection(PeerPlugin*);
+
     // Adds peer correspoinding to given endpoint to session,
     // is called when peer has sucessfully completed extended handshake.
     // Not when connection is established, as in TorrentPlugin::new_connection

@@ -664,6 +664,18 @@ void TorrentPlugin::addToSession(const libtorrent::tcp::endpoint & endPoint) {
     _alertManager->emplace_alert<alert::ConnectionAddedToSession>(_torrent, endPoint, plugin->connection().pid(), connectionStatus);
 }
 
+bool TorrentPlugin::sessionHasConnection(PeerPlugin* peerPlugin) {
+  assert(_peerPlugins.count(peerPlugin));
+
+  auto endPoint = peerPlugin->connection().remote();
+
+  if(!isConnectedEndpoint(peerPlugin)) {
+    return false;
+  }
+
+  return _session.hasConnection(endPoint);
+}
+
 void TorrentPlugin::removeFromSession(PeerPlugin* peerPlugin) {
   assert(_peerPlugins.count(peerPlugin));
 

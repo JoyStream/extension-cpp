@@ -459,7 +459,7 @@ namespace extension {
             return false;
         }
 
-        if(!_plugin->_session.hasConnection(_endPoint)) {
+        if(!_plugin->sessionHasConnection(this)) {
             std::clog << "Ignoring extended message, connection not in session" << std::endl;
             return false;
         }
