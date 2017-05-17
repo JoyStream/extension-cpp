@@ -109,9 +109,8 @@ boost::shared_ptr<libtorrent::peer_plugin> TorrentPlugin::new_connection(const l
     // Add to collection
     _peerPlugins[rawPeerPlugin] = weakPeerPlugin;
 
-    if(!connection.is_connecting()) {
+    if(!connection.is_outgoing()) {
       _peers[endPoint] = weakPeerPlugin;
-      _alertManager->emplace_alert<alert::PeerPluginAdded>(_torrent, endPoint, connection.pid(), rawPeerPlugin->status(boost::optional<protocol_session::status::Connection<libtorrent::tcp::endpoint>>()));
     }
 
     // Return pointer to plugin as required
@@ -131,7 +130,6 @@ void TorrentPlugin::outgoingConnectionEstablished(PeerPlugin* peerPlugin) {
   }
 
   _peers[endPoint] = _peerPlugins[peerPlugin];
-  _alertManager->emplace_alert<alert::PeerPluginAdded>(_torrent, endPoint, peerPlugin->connection().pid(), peerPlugin->status(boost::optional<protocol_session::status::Connection<libtorrent::tcp::endpoint>>()));
 }
 
 void TorrentPlugin::peerDisconnected(PeerPlugin* peerPlugin, libtorrent::error_code const & ec) {
@@ -141,7 +139,6 @@ void TorrentPlugin::peerDisconnected(PeerPlugin* peerPlugin, libtorrent::error_c
 
   // Check if the peer is an active connection
   if(isConnectedEndpoint(peerPlugin)) {
-    _alertManager->emplace_alert<alert::PeerPluginRemoved>(_torrent, endPoint, peerPlugin->connection().pid());
     removeFromSession(endPoint);
     _peers.erase(endPoint);
   }

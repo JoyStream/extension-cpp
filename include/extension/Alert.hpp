@@ -149,62 +149,6 @@ namespace alert {
         libtorrent::sha1_hash info_hash;
     };
 
-    struct PeerPluginAdded : public libtorrent::peer_alert {
-
-        PeerPluginAdded(libtorrent::aux::stack_allocator & alloc,
-                        const libtorrent::torrent_handle & h,
-                        const libtorrent::tcp::endpoint & ep,
-                        const libtorrent::peer_id & peer_id,
-                        const status::PeerPlugin & status)
-            : libtorrent::peer_alert(alloc, h, ep, peer_id)
-            , status(status) {}
-
-        TORRENT_DEFINE_ALERT(PeerPluginAdded, libtorrent::user_alert_id + 8)
-
-        virtual std::string message() const override {
-            return peer_alert::message() + " peer plugin added";
-        }
-
-        // Initial status of plugin
-        status::PeerPlugin status;
-    };
-
-    struct PeerPluginRemoved : public libtorrent::peer_alert {
-
-        PeerPluginRemoved(libtorrent::aux::stack_allocator & alloc,
-                        const libtorrent::torrent_handle & h,
-                        const libtorrent::tcp::endpoint & ep,
-                        const libtorrent::peer_id & peer_id)
-            : libtorrent::peer_alert(alloc, h, ep, peer_id) {}
-
-        TORRENT_DEFINE_ALERT(PeerPluginRemoved, libtorrent::user_alert_id + 9)
-
-        virtual std::string message() const override {
-            return peer_alert::message() + " peer plugin removed";
-        }
-
-        // reason for disconnect?
-    };
-
-    struct PeerPluginStatus : public libtorrent::peer_alert {
-
-        PeerPluginStatus(libtorrent::aux::stack_allocator & alloc,
-                        const libtorrent::torrent_handle & h,
-                        const libtorrent::tcp::endpoint & ep,
-                        const libtorrent::peer_id & peer_id,
-                        const status::PeerPlugin & status)
-            : libtorrent::peer_alert(alloc, h, ep, peer_id)
-            , status(status) {}
-
-        TORRENT_DEFINE_ALERT(PeerPluginStatus, libtorrent::user_alert_id + 10)
-
-        virtual std::string message() const override {
-            return peer_alert::message() + " peer plugin status";
-        }
-
-        status::PeerPlugin status;
-    };
-
     struct ConnectionAddedToSession : public libtorrent::peer_alert {
 
         ConnectionAddedToSession(libtorrent::aux::stack_allocator & alloc,
