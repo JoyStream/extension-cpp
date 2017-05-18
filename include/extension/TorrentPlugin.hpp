@@ -156,6 +156,10 @@ private:
     // Friendship required to process peer_plugin events
     friend class PeerPlugin;
 
+    bool isPeerBanned(const libtorrent::tcp::endpoint &);
+
+    void peerStartedHandshake(PeerPlugin*);
+
     void outgoingConnectionEstablished(PeerPlugin*);
 
     void peerDisconnected(PeerPlugin*, libtorrent::error_code const & ec);

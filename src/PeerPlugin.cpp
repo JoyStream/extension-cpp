@@ -106,9 +106,6 @@ namespace extension {
     }
 
     void PeerPlugin::on_disconnect(libtorrent::error_code const & ec) {
-
-        std::clog << "on_disconnect ["<< (_connection.is_outgoing() ? "outgoing" : "incoming") << "]:" << ec.message().c_str() << std::endl;
-
         // notify the torrent plugin.
         _plugin->peerDisconnected(this, ec);
     }
@@ -123,6 +120,8 @@ namespace extension {
     bool PeerPlugin::on_handshake(char const * reserved_bits) {
 
         assert(!_undead);
+
+        _plugin->peerStartedHandshake(this);
 
         // Set standard peer id
         _standardHandshakePeerId = _connection.pid();
