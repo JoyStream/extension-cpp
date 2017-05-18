@@ -115,40 +115,6 @@ namespace alert {
         Coin::PubKeyHash _finalPkHash;
     };
 
-    struct TorrentPluginAdded : public libtorrent::torrent_alert {
-
-        TorrentPluginAdded(libtorrent::aux::stack_allocator& alloc,
-                           const libtorrent::torrent_handle & h,
-                           const status::TorrentPlugin & status)
-            : libtorrent::torrent_alert(alloc, h)
-            , status(status){}
-
-        TORRENT_DEFINE_ALERT(TorrentPluginAdded, libtorrent::user_alert_id + 5)
-        static const int static_category = alert::status_notification;
-        virtual std::string message() const override {
-            return torrent_alert::message() + " torrent plugin added";
-        }
-
-        // Initial status of plugin
-        status::TorrentPlugin status;
-    };
-
-    struct TorrentPluginRemoved : public libtorrent::torrent_alert {
-
-        TorrentPluginRemoved(libtorrent::aux::stack_allocator& alloc,
-                             const libtorrent::torrent_handle & h,
-                             const libtorrent::sha1_hash & info_hash)
-            : libtorrent::torrent_alert(alloc, h)
-            , info_hash(info_hash) {}
-
-        TORRENT_DEFINE_ALERT(TorrentPluginRemoved, libtorrent::user_alert_id + 6)
-        static const int static_category = alert::status_notification;
-        virtual std::string message() const override {
-            return torrent_alert::message() + " torrent plugin removed";
-        }
-        libtorrent::sha1_hash info_hash;
-    };
-
     struct ConnectionAddedToSession : public libtorrent::peer_alert {
 
         ConnectionAddedToSession(libtorrent::aux::stack_allocator & alloc,

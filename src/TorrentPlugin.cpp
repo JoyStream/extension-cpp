@@ -43,11 +43,7 @@ TorrentPlugin::TorrentPlugin(Plugin * plugin,
 }
 
 TorrentPlugin::~TorrentPlugin() {
-
     std::clog << "~TorrentPlugin()" << std::endl;
-
-    // Send alert notification
-    _alertManager->emplace_alert<alert::TorrentPluginRemoved>(_torrent, _infoHash);
 }
 
 boost::shared_ptr<libtorrent::peer_plugin> TorrentPlugin::new_connection(const libtorrent::peer_connection_handle & connection) {
