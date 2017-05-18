@@ -158,31 +158,43 @@ private:
 
     bool isPeerBanned(const libtorrent::tcp::endpoint &);
 
+    // Called by peer plugin when bittorrent handshake is received
+    // This is when the torrent plugin chooses to either disconnect the peer
+    // or add it to the active peers map
     void peerStartedHandshake(PeerPlugin*);
 
+    // Called by peer plugins when an outgoing connection is established
     void outgoingConnectionEstablished(PeerPlugin*);
 
+    // Called by peer plugins when they are getting disconnected. The peer
+    // will be removed from the peer maps and removed from session if present
     void peerDisconnected(PeerPlugin*, libtorrent::error_code const & ec);
 
+    // Check to see if a peer plugin is in the active peers map
     bool isActivePeer(PeerPlugin*);
 
-    void addToSession(PeerPlugin*);
-
+    // Check to see if a peer plugin is active and added to session
     bool sessionHasConnection(PeerPlugin*);
+
+    // Peer plugin request to be added to session
+    void addToSession(PeerPlugin*);
 
     // Adds peer correspoinding to given endpoint to session,
     // is called when peer has sucessfully completed extended handshake.
     // Not when connection is established, as in TorrentPlugin::new_connection
     void addToSession(const libtorrent::tcp::endpoint &);
 
+    // Peer plugin request to be removed from session
     void removeFromSession(PeerPlugin*);
 
-    // Removes peer from session, if present
+    // Removes active peer from session, if present
     void removeFromSession(const libtorrent::tcp::endpoint &);
 
+    // Disconnects peer (used by peer plugins)
     void drop(PeerPlugin*, const libtorrent::error_code &);
 
-    // Disconnects peer, removes corresponding plugin from map
+    // Disconnects peer (used by protocol session callbacks)
+    // to disconnect active peers
     void drop(const libtorrent::tcp::endpoint &, const libtorrent::error_code &);
 
     // Determines the message type, calls correct handler, then frees message
