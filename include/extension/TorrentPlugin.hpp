@@ -138,7 +138,7 @@ public:
     const protocol_session::Session<libtorrent::tcp::endpoint> & session() const noexcept;
 
     // ***TEMPORARY***
-    std::map<libtorrent::tcp::endpoint, boost::weak_ptr<PeerPlugin> > peers() const noexcept;
+    std::map<libtorrent::tcp::endpoint, boost::weak_ptr<PeerPlugin> > activePeers() const noexcept;
 
     /// Getters & setters
 
@@ -164,7 +164,7 @@ private:
 
     void peerDisconnected(PeerPlugin*, libtorrent::error_code const & ec);
 
-    bool isConnectedEndpoint(PeerPlugin*);
+    bool isActivePeer(PeerPlugin*);
 
     void addToSession(PeerPlugin*);
 
@@ -190,7 +190,7 @@ private:
     void processExtendedMessage(PeerPlugin* peerPlugin, const M &extendedMessage){
         auto endPoint = peerPlugin->connection().remote();
 
-        if(!isConnectedEndpoint(peerPlugin)) {
+        if(!isActivePeer(peerPlugin)) {
             std::clog << "Ignoring extended message - not active connection" << std::endl;
             return;
         }
@@ -254,7 +254,8 @@ private:
     // Torrent info hash
     const libtorrent::sha1_hash _infoHash;
 
-    // Maps endpoint to corresponding peer_plugin, which is installed on all peers,
+    // Maps raw peer_plugin address to corresponding weak_ptr peer_plugin,
+    // which is installed on all bittorrent peers,
     // also those that don't even support BEP10, let alone this extension.
     // Is required to disrupt default libtorrent behaviour.
     //
@@ -264,9 +265,12 @@ private:
     // torrent object. So, it is generally a good idea to not keep a shared_ptr to
     // your own peer_plugin. If you want to keep references to it, use weak_ptr.
     // NB: All peers are added, while not all are added to _session, see below.
-    std::map<libtorrent::tcp::endpoint, boost::weak_ptr<PeerPlugin> > _peers;
-
     std::map<PeerPlugin*, boost::weak_ptr<PeerPlugin> > _peerPlugins;
+
+    // Maps endpoint to corresponding peer_plugin. Peers get added to this map after the initial
+    // bittorrent handshake and if they pass the connection screening, and only if no existing established
+    // connection exists with the same endpoint.
+    std::map<libtorrent::tcp::endpoint, boost::weak_ptr<PeerPlugin> > _activePeerPlugins;
 
     // Protocol session
     // Q: What peers are in session, and what are not.
@@ -309,7 +313,7 @@ private:
     libtorrent::alert_manager & alert_manager() const;
 
     // Returns raw plugin pointer after asserted locking
-    PeerPlugin * peer(const libtorrent::tcp::endpoint &);
+    PeerPlugin * activePeer(const libtorrent::tcp::endpoint &);
 
     // Returns raw torrent pointer after asserted locking
     libtorrent::torrent * torrent() const;

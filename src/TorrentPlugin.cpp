@@ -73,7 +73,7 @@ boost::shared_ptr<libtorrent::peer_plugin> TorrentPlugin::new_connection(const l
         return boost::shared_ptr<PeerPlugin>(nullptr);
     }
 
-    std::clog << "Installed peer plugin #" << _peers.size() << std::endl;
+    std::clog << "Installed peer plugin #" << _activePeerPlugins.size() << std::endl;
 
     // Create a new peer plugin
     PeerPlugin * rawPeerPlugin = new PeerPlugin(this, _torrent, connection, _minimumMessageId, _alertManager);
@@ -116,7 +116,7 @@ void TorrentPlugin::peerStartedHandshake(PeerPlugin* peerPlugin) {
   }
 
   // Only one active connection per endpoint
-  if(_peers.count(endPoint)) {
+  if(_activePeerPlugins.count(endPoint)) {
     std::clog << "dropping connection to same endpoint:" << libtorrent::print_endpoint(endPoint) << std::endl;
     libtorrent::error_code ec;
     drop(peerPlugin, ec);
@@ -125,7 +125,7 @@ void TorrentPlugin::peerStartedHandshake(PeerPlugin* peerPlugin) {
 
   // Add peer to active peer list
   std::clog << "adding connection to active peers map" << libtorrent::print_endpoint(endPoint) << std::endl;
-  _peers[endPoint] = _peerPlugins[peerPlugin];
+  _activePeerPlugins[endPoint] = _peerPlugins[peerPlugin];
 }
 
 void TorrentPlugin::outgoingConnectionEstablished(PeerPlugin* peerPlugin) {
@@ -144,17 +144,17 @@ void TorrentPlugin::peerDisconnected(PeerPlugin* peerPlugin, libtorrent::error_c
   std::clog << "peer disconnected " << libtorrent::print_endpoint(endPoint)<< " " << ec.message().c_str() << std::endl;
 
   // Check if the peer is an active connection
-  if(isConnectedEndpoint(peerPlugin)) {
+  if(isActivePeer(peerPlugin)) {
     removeFromSession(endPoint);
-    _peers.erase(endPoint);
+    _activePeerPlugins.erase(endPoint);
   }
 
   _peerPlugins.erase(peerPlugin);
 }
 
-bool TorrentPlugin::isConnectedEndpoint(PeerPlugin* peerPlugin) {
+bool TorrentPlugin::isActivePeer(PeerPlugin* peerPlugin) {
   auto endPoint = peerPlugin->connection().remote();
-  return _peers.count(endPoint) && peerPlugin == _peers[endPoint].lock().get();
+  return _activePeerPlugins.count(endPoint) && peerPlugin == _activePeerPlugins[endPoint].lock().get();
 }
 
 void TorrentPlugin::on_piece_pass(int index) {
@@ -289,7 +289,7 @@ void TorrentPlugin::pieceRead(const libtorrent::read_piece_alert * alert) {
     // Iterate peers
     for(auto endPoint : peers) {
 
-        if(!_peers.count(endPoint)) continue;
+        if(!_activePeerPlugins.count(endPoint)) continue;
 
         // Make sure reading worked
         if(alert->ec) {
@@ -331,7 +331,7 @@ void TorrentPlugin::start() {
                 // In a stopped state we would not have added the peer to our session
                 assert(!_session.hasConnection(endPoint));
 
-                auto p = peer(endPoint);
+                auto p = activePeer(endPoint);
                 // Add peer that has sent us a valid extended handshake when we were in stopped state
                 if (p->peerPaymentBEPSupportStatus() == BEPSupportStatus::supported)
                   addToSession(endPoint);
@@ -342,7 +342,7 @@ void TorrentPlugin::start() {
 void TorrentPlugin::stop() {
 
     // Setup peers to send uninstall handshakes on next call from libtorrent (add_handshake)
-    for(auto mapping : _peers) {
+    for(auto mapping : _activePeerPlugins) {
 
          boost::shared_ptr<PeerPlugin> peerPlugin = mapping.second.lock();
 
@@ -479,8 +479,8 @@ void TorrentPlugin::startUploading(const libtorrent::tcp::endpoint & endPoint,
 
 }
 
-std::map<libtorrent::tcp::endpoint, boost::weak_ptr<PeerPlugin> > TorrentPlugin::peers() const noexcept {
-    return _peers;
+std::map<libtorrent::tcp::endpoint, boost::weak_ptr<PeerPlugin> > TorrentPlugin::activePeers() const noexcept {
+    return _activePeerPlugins;
 }
 
 status::TorrentPlugin TorrentPlugin::status() const {
@@ -492,12 +492,12 @@ TorrentPlugin::LibtorrentInteraction TorrentPlugin::libtorrentInteraction() cons
     return _libtorrentInteraction;
 }
 
-PeerPlugin * TorrentPlugin::peer(const libtorrent::tcp::endpoint & endPoint) {
+PeerPlugin * TorrentPlugin::activePeer(const libtorrent::tcp::endpoint & endPoint) {
 
-    auto it = _peers.find(endPoint);
+    auto it = _activePeerPlugins.find(endPoint);
 
     // peer must be present
-    assert(it != _peers.cend());
+    assert(it != _activePeerPlugins.cend());
 
     // Get plugin reference
     boost::shared_ptr<PeerPlugin> peerPlugin = it->second.lock();
@@ -538,7 +538,7 @@ protocol_session::TorrentPieceInformation TorrentPlugin::torrentPieceInformation
 
 void TorrentPlugin::forEachBitTorrentConnection(const std::function<void(libtorrent::bt_peer_connection *)> & h) {
 
-    for(auto mapping : _peers) {
+    for(auto mapping : _activePeerPlugins) {
 
          boost::shared_ptr<PeerPlugin> plugin = mapping.second.lock();
 
@@ -571,7 +571,7 @@ void TorrentPlugin::addToSession(PeerPlugin* peerPlugin) {
 
   auto endPoint = peerPlugin->connection().remote();
 
-  if(isConnectedEndpoint(peerPlugin)) {
+  if(isActivePeer(peerPlugin)) {
     addToSession(endPoint);
   }
 }
@@ -582,8 +582,8 @@ void TorrentPlugin::addToSession(const libtorrent::tcp::endpoint & endPoint) {
     assert(_session.mode() != protocol_session::SessionMode::not_set);
 
     // we must know peer
-    auto it = _peers.find(endPoint);
-    assert(it != _peers.cend());
+    auto it = _activePeerPlugins.find(endPoint);
+    assert(it != _activePeerPlugins.cend());
 
     // but it must not already be added in session
     assert(!_session.hasConnection(endPoint));
@@ -672,7 +672,7 @@ bool TorrentPlugin::sessionHasConnection(PeerPlugin* peerPlugin) {
 
   auto endPoint = peerPlugin->connection().remote();
 
-  if(!isConnectedEndpoint(peerPlugin)) {
+  if(!isActivePeer(peerPlugin)) {
     return false;
   }
 
@@ -684,7 +684,7 @@ void TorrentPlugin::removeFromSession(PeerPlugin* peerPlugin) {
 
   auto endPoint = peerPlugin->connection().remote();
 
-  if(isConnectedEndpoint(peerPlugin)) {
+  if(isActivePeer(peerPlugin)) {
     removeFromSession(endPoint);
   }
 }
@@ -698,8 +698,8 @@ void TorrentPlugin::removeFromSession(const libtorrent::tcp::endpoint & endPoint
         _session.removeConnection(endPoint);
 
         // Send notification
-        auto it = _peers.find(endPoint);
-        assert(it != _peers.cend());
+        auto it = _activePeerPlugins.find(endPoint);
+        assert(it != _activePeerPlugins.cend());
         boost::shared_ptr<PeerPlugin> plugin = it->second.lock();
         assert(plugin);
 
@@ -725,7 +725,7 @@ void TorrentPlugin::drop(const libtorrent::tcp::endpoint & endPoint, const libto
     }
 
     // Get plugin
-    PeerPlugin * peerPlugin = peer(endPoint);
+    PeerPlugin * peerPlugin = activePeer(endPoint);
 
     // Make sure only we only process one call to drop the peer
     if(peerPlugin->undead())
@@ -751,7 +751,7 @@ protocol_session::RemovedConnectionCallbackHandler<libtorrent::tcp::endpoint> To
         else // all other reasons are considered misbehaviour
             _misbehavedPeers.insert(endPoint);
 
-        assert(this->_peers.count(endPoint));
+        assert(this->_activePeerPlugins.count(endPoint));
 
         // *** Record cause for some purpose? ***
 

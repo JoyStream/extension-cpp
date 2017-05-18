@@ -131,7 +131,7 @@ void RequestVariantVisitor::operator()(const request::PostPeerPluginStatusUpdate
     // Generate statuses for all peer plugins
     std::map<libtorrent::tcp::endpoint, status::PeerPlugin> statuses;
 
-    std::map<libtorrent::tcp::endpoint, boost::weak_ptr<PeerPlugin> > torrentPeerPlugins = torrentPlugin->peers();
+    std::map<libtorrent::tcp::endpoint, boost::weak_ptr<PeerPlugin> > torrentPeerPlugins = torrentPlugin->activePeers();
 
     for(auto m : torrentPeerPlugins) {
 
