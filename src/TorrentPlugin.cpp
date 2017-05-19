@@ -711,13 +711,6 @@ void TorrentPlugin::drop(PeerPlugin * peerPlugin, const libtorrent::error_code &
     peerPlugin->connection().disconnect(ec, libtorrent::operation_t::op_bittorrent);
 }
 
-void TorrentPlugin::drop(const libtorrent::tcp::endpoint & endPoint, const libtorrent::error_code & ec)  {
-    // Get plugin
-    PeerPlugin * peerPlugin = activePeer(endPoint);
-
-    drop(peerPlugin, ec);
-}
-
 protocol_session::RemovedConnectionCallbackHandler<libtorrent::tcp::endpoint> TorrentPlugin::removeConnection() {
 
     return [this](const libtorrent::tcp::endpoint & endPoint, protocol_session::DisconnectCause cause) {
@@ -740,7 +733,7 @@ protocol_session::RemovedConnectionCallbackHandler<libtorrent::tcp::endpoint> To
 
         // Disconnect connection
         libtorrent::error_code ec; // <--- what to put here as cause
-        this->drop(endPoint, ec);
+        this->drop(peer, ec);
     };
 }
 
