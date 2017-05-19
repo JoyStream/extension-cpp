@@ -184,11 +184,8 @@ private:
     // Not when connection is established, as in TorrentPlugin::new_connection
     void addToSession(const libtorrent::tcp::endpoint &);
 
-    // Peer plugin request to be removed from session
-    void removeFromSession(PeerPlugin*);
-
     // Removes active peer from session, if present
-    void removeFromSession(const libtorrent::tcp::endpoint &);
+    void removeFromSession(PeerPlugin*);
 
     // Disconnects peer (used by peer plugins)
     void drop(PeerPlugin*, const libtorrent::error_code &);

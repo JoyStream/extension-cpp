@@ -141,7 +141,7 @@ void TorrentPlugin::peerDisconnected(PeerPlugin* peerPlugin, libtorrent::error_c
 
   // Check if the peer is an active connection
   if(isActivePeer(peerPlugin)) {
-    removeFromSession(endPoint);
+    removeFromSession(peerPlugin);
     _activePeerPlugins.erase(endPoint);
   }
 
@@ -677,31 +677,18 @@ bool TorrentPlugin::sessionHasConnection(PeerPlugin* peerPlugin) {
 
 void TorrentPlugin::removeFromSession(PeerPlugin* peerPlugin) {
   assert(_peerPlugins.count(peerPlugin));
+  assert(isActivePeer(peerPlugin));
+
+  if(_session.mode() == protocol_session::SessionMode::not_set)
+      return;
 
   auto endPoint = peerPlugin->connection().remote();
 
-  if(isActivePeer(peerPlugin)) {
-    removeFromSession(endPoint);
+  if(_session.hasConnection(endPoint)) {
+      _session.removeConnection(endPoint);
   }
 }
 
-void TorrentPlugin::removeFromSession(const libtorrent::tcp::endpoint & endPoint) {
-    if(_session.mode() == protocol_session::SessionMode::not_set)
-        return;
-
-    if(_session.hasConnection(endPoint)) {
-
-        _session.removeConnection(endPoint);
-
-        // Send notification
-        auto it = _activePeerPlugins.find(endPoint);
-        assert(it != _activePeerPlugins.cend());
-        boost::shared_ptr<PeerPlugin> plugin = it->second.lock();
-        assert(plugin);
-
-        _alertManager->emplace_alert<alert::ConnectionRemovedFromSession>(_torrent, endPoint, plugin->connection().pid());
-    }
-}
 
 void TorrentPlugin::drop(PeerPlugin * peerPlugin, const libtorrent::error_code & ec) {
     assert(_peerPlugins.count(peerPlugin));
@@ -734,6 +721,10 @@ void TorrentPlugin::drop(const libtorrent::tcp::endpoint & endPoint, const libto
 protocol_session::RemovedConnectionCallbackHandler<libtorrent::tcp::endpoint> TorrentPlugin::removeConnection() {
 
     return [this](const libtorrent::tcp::endpoint & endPoint, protocol_session::DisconnectCause cause) {
+        // Send notification
+        auto peer = activePeer(endPoint);
+
+        _alertManager->emplace_alert<alert::ConnectionRemovedFromSession>(_torrent, endPoint, peer->connection().pid());
 
         // If the client was cause, then no further processing is required.
         // The callback is then a result of the stupid convention that Session::removeConnection()/stop()
