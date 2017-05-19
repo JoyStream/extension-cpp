@@ -611,14 +611,6 @@ namespace extension {
                                   connections);
     }
 
-    bool PeerPlugin::undead() const  {
-        return _undead;
-    }
-
-    void PeerPlugin::setUndead(bool undead) {
-        _undead = undead;
-    }
-
     libtorrent::peer_connection_handle PeerPlugin::connection() const {
         return _connection;
     }
@@ -628,7 +620,18 @@ namespace extension {
     }
 
     void PeerPlugin::drop(const libtorrent::error_code & ec) {
-        _plugin->drop(this, ec);
+      if(ec) {
+          // log string version: std::clog << "Malformed handshake received: m key not mapping to dictionary.";
+          // insert into _sentMalformedExtendedMessage
+          // insert into _misbehavedPeers
+      }
+
+      if (_undead)
+        return;
+
+      _undead = true;
+
+      _connection.disconnect(ec, libtorrent::operation_t::op_bittorrent);
     }
 
     BEPSupportStatus PeerPlugin::peerBEP10SupportStatus() const {

@@ -107,7 +107,7 @@ void TorrentPlugin::peerStartedHandshake(PeerPlugin* peerPlugin) {
   if(isPeerBanned(endPoint)) {
     std::clog << "dropping banned peer:" << libtorrent::print_endpoint(endPoint) << std::endl;
     libtorrent::error_code ec;
-    drop(peerPlugin, ec);
+    peerPlugin->drop(ec);
     return;
   }
 
@@ -115,7 +115,7 @@ void TorrentPlugin::peerStartedHandshake(PeerPlugin* peerPlugin) {
   if(_activePeerPlugins.count(endPoint)) {
     std::clog << "dropping connection to same endpoint:" << libtorrent::print_endpoint(endPoint) << std::endl;
     libtorrent::error_code ec;
-    drop(peerPlugin, ec);
+    peerPlugin->drop(ec);
     return;
   }
 
@@ -689,28 +689,6 @@ void TorrentPlugin::removeFromSession(PeerPlugin* peerPlugin) {
   }
 }
 
-
-void TorrentPlugin::drop(PeerPlugin * peerPlugin, const libtorrent::error_code & ec) {
-    assert(_peerPlugins.count(peerPlugin));
-
-    if(ec) {
-        // log string version: std::clog << "Malformed handshake received: m key not mapping to dictionary.";
-        // insert into _sentMalformedExtendedMessage
-        // insert into _misbehavedPeers
-    }
-
-    // Make sure only we only process one call to drop the peer
-    if(peerPlugin->undead())
-      return;
-
-    // Mark as undead
-    // NB: must be done before closing connection, due to on_disconnect callback from libtorrent
-    // peer will get disconnected by libtorrent when it calls can_connect on the peer plugin
-    peerPlugin->setUndead(true);
-
-    peerPlugin->connection().disconnect(ec, libtorrent::operation_t::op_bittorrent);
-}
-
 protocol_session::RemovedConnectionCallbackHandler<libtorrent::tcp::endpoint> TorrentPlugin::removeConnection() {
 
     return [this](const libtorrent::tcp::endpoint & endPoint, protocol_session::DisconnectCause cause) {
@@ -733,7 +711,7 @@ protocol_session::RemovedConnectionCallbackHandler<libtorrent::tcp::endpoint> To
 
         // Disconnect connection
         libtorrent::error_code ec; // <--- what to put here as cause
-        this->drop(peer, ec);
+        peer->drop(ec);
     };
 }
 

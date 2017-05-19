@@ -187,9 +187,6 @@ private:
     // Removes active peer from session, if present
     void removeFromSession(PeerPlugin*);
 
-    // Disconnects peer
-    void drop(PeerPlugin*, const libtorrent::error_code &);
-
     // Determines the message type, calls correct handler, then frees message
     template<class M>
     void processExtendedMessage(PeerPlugin* peerPlugin, const M &extendedMessage){
