@@ -48,6 +48,9 @@ namespace extension {
         // 0 is not a valid minimum message id
         if(_minimumMessageId == 0)
             throw exception::InvalidMinimumMessageIdException();
+
+        // Peer Plugin should only be installed for BitTorrent connections
+        assert(_connection.type() == libtorrent::peer_connection::bittorrent_connection);
     }
 
     PeerPlugin::~PeerPlugin() {
@@ -617,6 +620,20 @@ namespace extension {
 
     void PeerPlugin::setSendUninstallMappingOnNextExtendedHandshake(bool s) {
         _sendUninstallMappingOnNextExtendedHandshake = s;
+    }
+
+    void PeerPlugin::writeExtensions() {
+      boost::shared_ptr<libtorrent::peer_connection> nativeConnection = _connection.native_handle();
+
+      auto btconnection = static_cast<libtorrent::bt_peer_connection *>(nativeConnection.get());
+
+      if (btconnection->support_extensions()) {
+        btconnection->write_extensions();
+      }
+    }
+
+    libtorrent::tcp::endpoint PeerPlugin::endPoint() const {
+      return _endPoint;
     }
 
     void PeerPlugin::drop(const libtorrent::error_code & ec) {

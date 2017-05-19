@@ -101,7 +101,7 @@ void TorrentPlugin::peerStartedHandshake(PeerPlugin* peerPlugin) {
   // decide if we will add this peer to active peer list or disconnect it
   assert(_peerPlugins.count(peerPlugin));
 
-  auto endPoint = peerPlugin->connection().remote();
+  auto endPoint = peerPlugin->endPoint();
 
   // Disconnect banned endpoints
   if(isPeerBanned(endPoint)) {
@@ -127,7 +127,7 @@ void TorrentPlugin::peerStartedHandshake(PeerPlugin* peerPlugin) {
 void TorrentPlugin::outgoingConnectionEstablished(PeerPlugin* peerPlugin) {
   assert(_peerPlugins.count(peerPlugin));
 
-  auto endPoint = peerPlugin->connection().remote();
+  auto endPoint = peerPlugin->endPoint();
 
   std::clog << "outgoing connection established " << libtorrent::print_endpoint(endPoint) << std::endl;
 }
@@ -135,7 +135,7 @@ void TorrentPlugin::outgoingConnectionEstablished(PeerPlugin* peerPlugin) {
 void TorrentPlugin::peerDisconnected(PeerPlugin* peerPlugin, libtorrent::error_code const & ec) {
   assert(_peerPlugins.count(peerPlugin));
 
-  auto endPoint = peerPlugin->connection().remote();
+  auto endPoint = peerPlugin->endPoint();
 
   std::clog << "peer disconnected " << libtorrent::print_endpoint(endPoint)<< " " << ec.message().c_str() << std::endl;
 
@@ -149,7 +149,7 @@ void TorrentPlugin::peerDisconnected(PeerPlugin* peerPlugin, libtorrent::error_c
 }
 
 bool TorrentPlugin::isActivePeer(PeerPlugin* peerPlugin) {
-  auto endPoint = peerPlugin->connection().remote();
+  auto endPoint = peerPlugin->endPoint();
   return _activePeerPlugins.count(endPoint) && peerPlugin == _activePeerPlugins[endPoint].lock().get();
 }
 
@@ -317,22 +317,25 @@ void TorrentPlugin::start() {
     _alertManager->emplace_alert<alert::SessionStarted>(_torrent);
 
     // If session was initially stopped (not paused), then initiate extended handshake
-    if(initialState == protocol_session::SessionState::stopped)
-        forEachBitTorrentConnection([this](libtorrent::bt_peer_connection *c) -> void {
-            if(c->support_extensions()) {
-                c->write_extensions();
+    if(initialState == protocol_session::SessionState::stopped){
+      for(auto mapping : _activePeerPlugins) {
+         boost::shared_ptr<PeerPlugin> peer = mapping.second.lock();
 
-                auto endPoint = c->remote();
+         assert(peer);
 
-                // In a stopped state we would not have added the peer to our session
-                assert(!_session.hasConnection(endPoint));
+         peer->writeExtensions();
 
-                auto p = activePeer(endPoint);
-                // Add peer that has sent us a valid extended handshake when we were in stopped state
-                if (p->peerPaymentBEPSupportStatus() == BEPSupportStatus::supported)
-                  addToSession(endPoint);
-            }
-        });
+         auto endPoint = peer->endPoint();
+
+         // In a stopped state we would not have added the peer to our session
+         assert(!_session.hasConnection(endPoint));
+
+         // Add peer that has sent us a valid extended handshake when we were in stopped state
+         if (peer->peerPaymentBEPSupportStatus() == BEPSupportStatus::supported) {
+           addToSession(peer.get());
+         }
+      }
+    }
 }
 
 void TorrentPlugin::stop() {
@@ -356,7 +359,14 @@ void TorrentPlugin::stop() {
     _alertManager->emplace_alert<alert::SessionStopped>(_torrent);
 
     // Start handshake
-    forEachBitTorrentConnection([](libtorrent::bt_peer_connection *c) -> void { c->write_extensions(); });
+    for(auto mapping : _activePeerPlugins) {
+
+         boost::shared_ptr<PeerPlugin> peerPlugin = mapping.second.lock();
+
+         assert(peerPlugin);
+
+         peerPlugin->writeExtensions();
+    }
 }
 
 void TorrentPlugin::pause() {
@@ -563,29 +573,22 @@ const protocol_session::Session<libtorrent::tcp::endpoint> & TorrentPlugin::sess
 }
 
 void TorrentPlugin::addToSession(PeerPlugin* peerPlugin) {
-  assert(_peerPlugins.count(peerPlugin));
-
-  auto endPoint = peerPlugin->connection().remote();
-
-  if(isActivePeer(peerPlugin)) {
-    addToSession(endPoint);
-  }
-}
-
-void TorrentPlugin::addToSession(const libtorrent::tcp::endpoint & endPoint) {
-
     // quick fix: gaurd call to hasConnection
     assert(_session.mode() != protocol_session::SessionMode::not_set);
 
-    // we must know peer
-    auto it = _activePeerPlugins.find(endPoint);
-    assert(it != _activePeerPlugins.cend());
+    assert(_peerPlugins.count(peerPlugin));
+
+    auto endPoint = peerPlugin->endPoint();
+
+    // We are only allowing active peers to reach the point
+    // where they send us an extended handshake
+    assert(isActivePeer(peerPlugin));
 
     // but it must not already be added in session
     assert(!_session.hasConnection(endPoint));
 
     // Create callbacks which asserts presence of plugin
-    boost::weak_ptr<PeerPlugin> wPeerPlugin = it->second;
+    boost::weak_ptr<PeerPlugin> wPeerPlugin = _activePeerPlugins[endPoint];
 
     protocol_session::SendMessageOnConnectionCallbacks send;
 
@@ -657,16 +660,14 @@ void TorrentPlugin::addToSession(const libtorrent::tcp::endpoint & endPoint) {
     _session.addConnection(endPoint, send);
 
     // Send notification
-    boost::shared_ptr<PeerPlugin> plugin = wPeerPlugin.lock();
-    assert(plugin);
     auto connectionStatus = _session.connectionStatus(endPoint);
-    _alertManager->emplace_alert<alert::ConnectionAddedToSession>(_torrent, endPoint, plugin->connection().pid(), connectionStatus);
+    _alertManager->emplace_alert<alert::ConnectionAddedToSession>(_torrent, endPoint, peerPlugin->connection().pid(), connectionStatus);
 }
 
 bool TorrentPlugin::sessionHasConnection(PeerPlugin* peerPlugin) {
   assert(_peerPlugins.count(peerPlugin));
 
-  auto endPoint = peerPlugin->connection().remote();
+  auto endPoint = peerPlugin->endPoint();
 
   if(!isActivePeer(peerPlugin)) {
     return false;
@@ -682,7 +683,7 @@ void TorrentPlugin::removeFromSession(PeerPlugin* peerPlugin) {
   if(_session.mode() == protocol_session::SessionMode::not_set)
       return;
 
-  auto endPoint = peerPlugin->connection().remote();
+  auto endPoint = peerPlugin->endPoint();
 
   if(_session.hasConnection(endPoint)) {
       _session.removeConnection(endPoint);

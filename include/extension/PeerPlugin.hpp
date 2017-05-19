@@ -178,6 +178,10 @@ namespace status {
 
         libtorrent::peer_connection_handle connection() const;
 
+        libtorrent::tcp::endpoint endPoint() const;
+
+        void writeExtensions();
+
         void setSendUninstallMappingOnNextExtendedHandshake(bool);
 
         BEPSupportStatus peerBEP10SupportStatus() const;
@@ -193,8 +197,6 @@ namespace status {
 
         /**
         bool peerTimedOut(int maxDelay) const;
-
-        libtorrent::tcp::endpoint endPoint() const;
 
         libtorrent::error_code deletionErrorCode() const;
         */

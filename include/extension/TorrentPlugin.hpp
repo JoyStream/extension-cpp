@@ -176,13 +176,10 @@ private:
     // Check to see if a peer plugin is active and added to session
     bool sessionHasConnection(PeerPlugin*);
 
-    // Peer plugin request to be added to session
-    void addToSession(PeerPlugin*);
-
     // Adds peer correspoinding to given endpoint to session,
     // is called when peer has sucessfully completed extended handshake.
     // Not when connection is established, as in TorrentPlugin::new_connection
-    void addToSession(const libtorrent::tcp::endpoint &);
+    void addToSession(PeerPlugin*);
 
     // Removes active peer from session, if present
     void removeFromSession(PeerPlugin*);
@@ -190,7 +187,7 @@ private:
     // Determines the message type, calls correct handler, then frees message
     template<class M>
     void processExtendedMessage(PeerPlugin* peerPlugin, const M &extendedMessage){
-        auto endPoint = peerPlugin->connection().remote();
+        auto endPoint = peerPlugin->endPoint();
 
         if(!isActivePeer(peerPlugin)) {
             std::clog << "Ignoring extended message - not active connection" << std::endl;
