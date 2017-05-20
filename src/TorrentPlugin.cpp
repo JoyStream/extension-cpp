@@ -150,7 +150,14 @@ void TorrentPlugin::peerDisconnected(PeerPlugin* peerPlugin, libtorrent::error_c
 
 bool TorrentPlugin::isActivePeer(PeerPlugin* peerPlugin) {
   auto endPoint = peerPlugin->endPoint();
-  return _activePeerPlugins.count(endPoint) && peerPlugin == _activePeerPlugins[endPoint].lock().get();
+
+  if(_activePeerPlugins.count(endPoint) == 0) return false;
+
+  auto sharedPtr = _activePeerPlugins[endPoint].lock();
+
+  assert(sharedPtr);
+
+  return peerPlugin == sharedPtr.get();
 }
 
 void TorrentPlugin::on_piece_pass(int index) {
