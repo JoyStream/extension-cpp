@@ -170,15 +170,14 @@ void TorrentPlugin::on_piece_pass(int index) {
         // If this validation is not due to us
         if(it == _outstandingFullPieceArrivedCalls.cend()) {
 
-            // For now, just use defaut peer id
-            libtorrent::peer_id peer_id;
-
-            _alertManager->emplace_alert<alert::ValidPieceArrived>(_torrent, it->second, peer_id, index);
-
             // then just tell session about it
             _session.pieceDownloaded(index);
 
         } else {
+            // For now, just use defaut peer id
+            libtorrent::peer_id peer_id;
+
+            _alertManager->emplace_alert<alert::ValidPieceArrived>(_torrent, it->second, peer_id, index);
 
             // if its due to us, then tell session about endpoint and piece
             _session.validPieceReceivedOnConnection(it->second, index);
