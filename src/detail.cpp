@@ -129,13 +129,13 @@ void RequestVariantVisitor::operator()(const request::PostPeerPluginStatusUpdate
         return;
 
     // Generate statuses for all peer plugins
-    std::map<libtorrent::tcp::endpoint, status::PeerPlugin> statuses;
+    std::map<libtorrent::peer_id, status::PeerPlugin> statuses;
 
-    std::map<libtorrent::tcp::endpoint, boost::weak_ptr<PeerPlugin> > torrentPeerPlugins = torrentPlugin->activePeers();
+    std::map<libtorrent::peer_id, boost::weak_ptr<PeerPlugin> > torrentPeerPlugins = torrentPlugin->peers();
 
     for(auto m : torrentPeerPlugins) {
 
-        boost::optional<protocol_session::status::Connection<libtorrent::tcp::endpoint>> connectionStatus;
+        boost::optional<protocol_session::status::Connection<libtorrent::peer_id>> connectionStatus;
 
         if (torrentPlugin->session().hasConnection(m.first)) {
           // Get connection status corresponding to peer plugin
@@ -267,7 +267,7 @@ void RequestVariantVisitor::operator()(const request::StartDownloading & r) {
 void RequestVariantVisitor::operator()(const request::StartUploading & r) {
 
     auto e = runTorrentPluginRequest(r.infoHash, [r](const boost::shared_ptr<TorrentPlugin> & plugin) {
-        plugin->startUploading(r.endPoint, r.terms, r.contractKeyPair, r.finalPkHash);
+        plugin->startUploading(r.peerId, r.terms, r.contractKeyPair, r.finalPkHash);
     });
 
     sendRequestResult(std::bind(r.handler, e));

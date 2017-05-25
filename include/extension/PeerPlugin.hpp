@@ -174,7 +174,7 @@ namespace status {
         }
 
         // Status of plugin
-        status::PeerPlugin status(const boost::optional<protocol_session::status::Connection<libtorrent::tcp::endpoint>> & connections) const;
+        status::PeerPlugin status(const boost::optional<protocol_session::status::Connection<libtorrent::peer_id>> & connections) const;
 
         libtorrent::peer_connection_handle connection() const;
 

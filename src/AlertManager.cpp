@@ -27,12 +27,12 @@ void AlertManager::request_emplace_alert(extension::alert::LoadedCallBack &c)
 }
 
 void AlertManager::anchorAnnounced_emplace_alert(
-    libtorrent::torrent_handle h, libtorrent::tcp::endpoint &endPoint,
+    libtorrent::torrent_handle h, libtorrent::peer_id &peerId,
     uint64_t value, const Coin::typesafeOutPoint &anchor,
     const Coin::PublicKey &contractPk, const Coin::PubKeyHash &finalPkHash
 )
 {
-    _alertManager->emplace_alert<extension::alert::AnchorAnnounced>(h, endPoint, value, anchor, contractPk, finalPkHash);
+    _alertManager->emplace_alert<extension::alert::AnchorAnnounced>(h, peerId, value, anchor, contractPk, finalPkHash);
 }
 
 /*

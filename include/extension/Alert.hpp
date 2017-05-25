@@ -58,7 +58,7 @@ namespace alert {
 
         PeerPluginStatusUpdateAlert(libtorrent::aux::stack_allocator & alloc,
                                     const libtorrent::torrent_handle & h,
-                                    const std::map<libtorrent::tcp::endpoint, status::PeerPlugin> & statuses)
+                                    const std::map<libtorrent::peer_id, status::PeerPlugin> & statuses)
             : libtorrent::torrent_alert(alloc, h)
             , statuses(statuses) {}
 
@@ -68,7 +68,7 @@ namespace alert {
             return "Peer plugin statuses.";
         }
 
-        std::map<libtorrent::tcp::endpoint, status::PeerPlugin> statuses;
+        std::map<libtorrent::peer_id, status::PeerPlugin> statuses;
     };
 
     struct RequestResult final : public libtorrent::alert {
@@ -90,13 +90,13 @@ namespace alert {
 
         AnchorAnnounced(libtorrent::aux::stack_allocator & alloc,
                         const libtorrent::torrent_handle & h,
-                        const libtorrent::tcp::endpoint & endPoint,
+                        const libtorrent::peer_id & peerId,
                         uint64_t value,
                         const Coin::typesafeOutPoint & anchor,
                         const Coin::PublicKey & contractPk,
                         const Coin::PubKeyHash & finalPkHash)
             : libtorrent::torrent_alert(alloc, h)
-            , _endPoint(endPoint)
+            , _peerId(peerId)
             , _value(value)
             , _anchor(anchor)
             , _contractPk(contractPk)
@@ -108,7 +108,7 @@ namespace alert {
             return torrent_alert::message() + " anchor announced";
         }
 
-        libtorrent::tcp::endpoint _endPoint;
+        libtorrent::peer_id _peerId;
         uint64_t _value;
         Coin::typesafeOutPoint _anchor;
         Coin::PublicKey _contractPk;
@@ -121,7 +121,7 @@ namespace alert {
                                  const libtorrent::torrent_handle & h,
                                  const libtorrent::tcp::endpoint & ep,
                                  const libtorrent::peer_id & peer_id,
-                                 const protocol_session::status::Connection<libtorrent::tcp::endpoint> & status)
+                                 const protocol_session::status::Connection<libtorrent::peer_id> & status)
             : libtorrent::peer_alert(alloc, h, ep, peer_id)
             , status(status) {}
 
@@ -131,7 +131,7 @@ namespace alert {
             return peer_alert::message() + " session connection added";
         }
 
-        protocol_session::status::Connection<libtorrent::tcp::endpoint> status;
+        protocol_session::status::Connection<libtorrent::peer_id> status;
     };
 
     struct ConnectionRemovedFromSession : public libtorrent::peer_alert {
@@ -508,7 +508,7 @@ namespace alert {
         DownloadStarted(libtorrent::aux::stack_allocator& alloc,
                         const libtorrent::torrent_handle & h,
                         const Coin::Transaction & contractTx,
-                        const protocol_session::PeerToStartDownloadInformationMap<libtorrent::tcp::endpoint> & peerToStartDownloadInformationMap)
+                        const protocol_session::PeerToStartDownloadInformationMap<libtorrent::peer_id> & peerToStartDownloadInformationMap)
             : libtorrent::torrent_alert(alloc, h)
             , contractTx(contractTx)
             , peerToStartDownloadInformationMap(peerToStartDownloadInformationMap) {}
@@ -520,19 +520,19 @@ namespace alert {
         }
 
         const Coin::Transaction contractTx;
-        const protocol_session::PeerToStartDownloadInformationMap<libtorrent::tcp::endpoint> peerToStartDownloadInformationMap;
+        const protocol_session::PeerToStartDownloadInformationMap<libtorrent::peer_id> peerToStartDownloadInformationMap;
     };
 
     struct UploadStarted : public libtorrent::torrent_alert {
 
         UploadStarted(libtorrent::aux::stack_allocator& alloc,
                       const libtorrent::torrent_handle & h,
-                      const libtorrent::tcp::endpoint & endPoint,
+                      const libtorrent::peer_id & peerId,
                       const protocol_wire::BuyerTerms & terms,
                       const Coin::KeyPair & contractKeyPair,
                       const Coin::PubKeyHash & finalPkHash)
             : libtorrent::torrent_alert(alloc, h)
-            , endPoint(endPoint)
+            , peerId(peerId)
             , terms(terms)
             , contractKeyPair(contractKeyPair)
             , finalPkHash(finalPkHash) {}
@@ -543,7 +543,7 @@ namespace alert {
             return torrent_alert::message() + " upload started";
         }
 
-        const libtorrent::tcp::endpoint endPoint;
+        const libtorrent::peer_id peerId;
         const protocol_wire::BuyerTerms terms;
         const Coin::KeyPair contractKeyPair;
         const Coin::PubKeyHash finalPkHash;
