@@ -123,10 +123,10 @@ public:
 
     // See docs for protocol_session::startDownloading
     void startDownloading(const Coin::Transaction & contractTx,
-                          const protocol_session::PeerToStartDownloadInformationMap<libtorrent::tcp::endpoint> & peerToStartDownloadInformationMap);
+                          const protocol_session::PeerToStartDownloadInformationMap<libtorrent::peer_id> & peerToStartDownloadInformationMap);
 
     // See docs for protocol_session::startUploading
-    void startUploading(const libtorrent::tcp::endpoint & endPoint,
+    void startUploading(const libtorrent::peer_id & peerId,
                         const protocol_wire::BuyerTerms & terms,
                         const Coin::KeyPair & contractKeyPair,
                         const Coin::PubKeyHash & finalPkHash);
@@ -135,10 +135,10 @@ public:
     protocol_session::SessionState sessionState() const;
 
     // ***TEMPORARY***
-    const protocol_session::Session<libtorrent::tcp::endpoint> & session() const noexcept;
+    const protocol_session::Session<libtorrent::peer_id> & session() const noexcept;
 
     // ***TEMPORARY***
-    std::map<libtorrent::tcp::endpoint, boost::weak_ptr<PeerPlugin> > peers() const noexcept;
+    std::map<libtorrent::peer_id, boost::weak_ptr<PeerPlugin> > peers() const noexcept;
 
     /// Getters & setters
 
@@ -156,43 +156,61 @@ private:
     // Friendship required to process peer_plugin events
     friend class PeerPlugin;
 
-    // Adds peer correspoinding to given endpoint to session,
-    // is called when peer has sucessfully completed extended handshake.
+    bool isPeerBanned(const libtorrent::tcp::endpoint &);
+
+    // Called by peer plugin when bittorrent handshake is received
+    // Libtorrent will have disconnected any other peers with the same peer_id
+    // So we can safely assume that no other peer in our _peersCompletedHandshake will
+    // have the same peer_id
+    void peerStartedHandshake(PeerPlugin*);
+
+    // Called by peer plugins when an outgoing connection is established
+    void outgoingConnectionEstablished(PeerPlugin*);
+
+    // Called by peer plugins when they are getting disconnected. The peer
+    // will be removed from the relevant peer map and removed from session if present
+    void peerDisconnected(PeerPlugin*, libtorrent::error_code const & ec);
+
+    // Test to see if a peer plugin is in the _peersCompletedHandshake map
+    bool peerHasCompletedHandshake(PeerPlugin*);
+
+    // Check to see if a peer plugin is in the _peersCompletedHandshake map and added to session
+    bool peerInSession(PeerPlugin*);
+
+    // Called by peer plugin when sends extended joystream handshake
     // Not when connection is established, as in TorrentPlugin::new_connection
-    void addToSession(const libtorrent::tcp::endpoint &);
+    void addToSession(PeerPlugin*);
 
     // Removes peer from session, if present
-    void removeFromSession(const libtorrent::tcp::endpoint &);
+    void removeFromSession(PeerPlugin*);
 
-    // Disconnects peer, removes corresponding plugin from map
-    void drop(const libtorrent::tcp::endpoint &, const libtorrent::error_code &, bool disconnect = true);
-
-    // Determines the message type, calls correct handler, then frees message
+    // Processes extended message from peer
     template<class M>
-    void processExtendedMessage(const libtorrent::tcp::endpoint & endPoint, const M &extendedMessage){
-
+    void processExtendedMessage(PeerPlugin* peerPlugin, const M &extendedMessage){
         if(_session.mode() == protocol_session::SessionMode::not_set) {
             std::clog << "Ignoring extended message - session mode not set" << std::endl;
             return;
         }
 
-        if(!_session.hasConnection(endPoint)) {
+        if(!peerInSession(peerPlugin)) {
             std::clog << "Ignoring extended message - connection already removed from session" << std::endl;
             return;
         }
+
         // Have session process message
-        _session.processMessageOnConnection<M>(endPoint, extendedMessage);
+        auto peerId = peerPlugin->connection().pid();
+        _session.processMessageOnConnection<M>(peerId, extendedMessage);
     }
 
     /// Protocol session hooks
 
-    protocol_session::RemovedConnectionCallbackHandler<libtorrent::tcp::endpoint> removeConnection();
-    protocol_session::FullPieceArrived<libtorrent::tcp::endpoint> fullPieceArrived();
-    protocol_session::LoadPieceForBuyer<libtorrent::tcp::endpoint> loadPieceForBuyer();
-    protocol_session::ClaimLastPayment<libtorrent::tcp::endpoint> claimLastPayment();
-    protocol_session::AnchorAnnounced<libtorrent::tcp::endpoint> anchorAnnounced();
-    protocol_session::ReceivedValidPayment<libtorrent::tcp::endpoint> receivedValidPayment();
-    protocol_session::SentPayment<libtorrent::tcp::endpoint> sentPayment();
+    protocol_session::RemovedConnectionCallbackHandler<libtorrent::peer_id> removeConnection();
+    protocol_session::FullPieceArrived<libtorrent::peer_id> fullPieceArrived();
+    protocol_session::LoadPieceForBuyer<libtorrent::peer_id> loadPieceForBuyer();
+    protocol_session::ClaimLastPayment<libtorrent::peer_id> claimLastPayment();
+    protocol_session::AnchorAnnounced<libtorrent::peer_id> anchorAnnounced();
+    protocol_session::ReceivedValidPayment<libtorrent::peer_id> receivedValidPayment();
+    protocol_session::SentPayment<libtorrent::peer_id> sentPayment();
 
     /// Members
 
@@ -229,17 +247,27 @@ private:
     // Torrent info hash
     const libtorrent::sha1_hash _infoHash;
 
-    // Maps endpoint to corresponding peer_plugin, which is installed on all peers,
+    // Maps raw peer_plugin address to corresponding weak_ptr peer_plugin,
+    // which is installed on all bittorrent peers,
     // also those that don't even support BEP10, let alone this extension.
     // Is required to disrupt default libtorrent behaviour.
-    //
+    // peer plugins are aded to this map as soon as they are created.
+    // When a peer completes a bittorrent handshake and libtorrent decides to keep the underlying
+    // peer connection, it will be removed from this map. If libtorrent decides to disconnect the peer
+    // after processing the handshake it will be removed from this map
     // Q: Why weak_ptr?
     // A: Libtorrent docs (http://libtorrent.org/reference-Plugins.html#peer_plugin):
     // The peer_connection will be valid as long as the shared_ptr is being held by the
     // torrent object. So, it is generally a good idea to not keep a shared_ptr to
     // your own peer_plugin. If you want to keep references to it, use weak_ptr.
     // NB: All peers are added, while not all are added to _session, see below.
-    std::map<libtorrent::tcp::endpoint, boost::weak_ptr<PeerPlugin> > _peers;
+    std::map<PeerPlugin*, boost::weak_ptr<PeerPlugin> > _peersAwaitingHandshake;
+
+    // Maps peer_id to corresponding peer_plugin. Peers get moved from the peersAwaitingHandshake
+    // to this map when libtorrent finishes processing the bittorrent handshake and decides to keep
+    // the connection open. Peers will be removed from this map when they are disconnected
+    // (after being removed from the session)
+    std::map<libtorrent::peer_id, boost::weak_ptr<PeerPlugin> > _peersCompletedHandshake;
 
     // Protocol session
     // Q: What peers are in session, and what are not.
@@ -248,7 +276,7 @@ private:
     // was established when both peer and client side have extension enabled, and
     // even in that case it can be uninstalled later by either side. When starting
     // the session again, the client side will reinvite peer to do extended handshake
-    protocol_session::Session<libtorrent::tcp::endpoint> _session;
+    protocol_session::Session<libtorrent::peer_id> _session;
 
     /**
      * Hopefully we can ditch all of this, if we can delete connections in new_connection callback
@@ -260,7 +288,7 @@ private:
     // A peer may end up here for one of the following reasons
     // (1) we determine in ::new_connection() that we don't want this connection.
     // Due to assertion constraint in libtorrent the connection cannot be disconneected here.
-    //std::set<libtorrent::tcp::endpoint> _disconnectNextTick;
+    //std::set<libtorrent::peer_id> _disconnectNextTick;
     */
 
     /// Sell mode spesific state
@@ -268,13 +296,13 @@ private:
     // While selling, this maintains mapping between piece index and peers that are
     // waiting for this piece to be read from disk.
     // Will typically just be one, but may be multiple - hence set is used
-    std::map<int, std::set<libtorrent::tcp::endpoint> > _outstandingLoadPieceForBuyerCalls;
+    std::map<int, std::set<libtorrent::peer_id> > _outstandingLoadPieceForBuyerCalls;
 
     /// Buy mode spesific state
 
     // While buying, this maintains mapping between piece index and the single
     // peer waiting for it to be validated and stored.
-    std::map<int, libtorrent::tcp::endpoint> _outstandingFullPieceArrivedCalls;
+    std::map<int, libtorrent::peer_id> _outstandingFullPieceArrivedCalls;
 
     /// Utilities
 
@@ -282,7 +310,7 @@ private:
     libtorrent::alert_manager & alert_manager() const;
 
     // Returns raw plugin pointer after asserted locking
-    PeerPlugin * peer(const libtorrent::tcp::endpoint &);
+    PeerPlugin * peer(const libtorrent::peer_id &);
 
     // Returns raw torrent pointer after asserted locking
     libtorrent::torrent * torrent() const;
@@ -290,9 +318,6 @@ private:
 
     // Returns torrent piece information based on current state of torrent
     protocol_session::TorrentPieceInformation torrentPieceInformation() const;
-
-    // Processes each Bittorrent type connection
-    void forEachBitTorrentConnection(const std::function<void(libtorrent::bt_peer_connection *)> &);
 };
 
 }

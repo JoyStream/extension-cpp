@@ -48,14 +48,13 @@ namespace extension {
         // 0 is not a valid minimum message id
         if(_minimumMessageId == 0)
             throw exception::InvalidMinimumMessageIdException();
+
+        // Peer Plugin should only be installed for BitTorrent connections
+        assert(_connection.type() == libtorrent::peer_connection::bittorrent_connection);
     }
 
     PeerPlugin::~PeerPlugin() {
-
         std::clog << "~PeerPlugin() called." << std::endl;
-
-        // Send removal notification
-        _alertManager->emplace_alert<alert::PeerPluginRemoved>(_torrent, _endPoint, _standardHandshakePeerId);
     }
 
     char const* PeerPlugin::type() const {
@@ -110,26 +109,22 @@ namespace extension {
     }
 
     void PeerPlugin::on_disconnect(libtorrent::error_code const & ec) {
-
-        std::clog << "on_disconnect ["<< (_connection.is_outgoing() ? "outgoing" : "incoming") << "]:" << ec.message().c_str() << std::endl;
-
-        // If connection is undead, then this callback should be ignored.
-        if(_undead)
-            return;
-
-        // Otherwise, the disconnect was iniated by peer, and we should notify
-        // the torrent plugin.
-        _plugin->drop(_endPoint, ec, false);
+        // notify the torrent plugin.
+        _plugin->peerDisconnected(this, ec);
     }
 
     void PeerPlugin::on_connected() {
 
         assert(!_undead);
+
+        _plugin->outgoingConnectionEstablished(this);
     }
 
     bool PeerPlugin::on_handshake(char const * reserved_bits) {
 
         assert(!_undead);
+
+        _plugin->peerStartedHandshake(this);
 
         // Set standard peer id
         _standardHandshakePeerId = _connection.pid();
@@ -295,31 +290,23 @@ namespace extension {
 
         } catch(const exception::InvalidMessageMappingDictionary & e) {
 
-            // disconnect the peer by default
-            bool doPeerDisconnect = true;
-
-            // If the uninstall mapping was valid we do not need to disconnect the peer
-            if(e.problem == exception::InvalidMessageMappingDictionary::Problem::UninstallMappingFound) {
-               if(peerMappingWasPreviouslySet) {
-                    std::clog << "Uninstall mapping was found." << std::endl;
-                    doPeerDisconnect = false;
-               } else {
-                    std::clog << "Uninstall mapping was found, but no mapping has been previoulsy installed" << std::endl;
-               }
-            }
-
             // Discard old mapping
             _peerMapping.clear();
 
             // Mark peer as not supporting this extension
             _peerPaymentBEPSupportStatus  = BEPSupportStatus::not_supported;
 
-            // Remove from session, if present
-            _plugin->removeFromSession(_endPoint);
-
-            if(doPeerDisconnect) {
-                libtorrent::error_code ec;
-                drop(ec);
+            // If the uninstall mapping was valid we do not need to disconnect the peer
+            if(e.problem == exception::InvalidMessageMappingDictionary::Problem::UninstallMappingFound) {
+               if(peerMappingWasPreviouslySet) {
+                    std::clog << "Uninstall mapping was found." << std::endl;
+                    // Remove from session if present
+                    _plugin->removeFromSession(this);
+               } else {
+                    std::clog << "Uninstall mapping was found, but no mapping has been previoulsy installed" << std::endl;
+                    libtorrent::error_code ec;
+                    drop(ec);
+               }
             }
 
             // Keep us around
@@ -340,7 +327,7 @@ namespace extension {
 
             // NB: in the future, supply _protocolVersionOfPeer to session?
 
-            _plugin->addToSession(_endPoint);
+            _plugin->addToSession(this);
 
         } else
             std::clog << "Peer not added to stopped session" << std::endl;
@@ -466,7 +453,7 @@ namespace extension {
             return false;
         }
 
-        if(!_plugin->_session.hasConnection(_endPoint)) {
+        if(!_plugin->peerInSession(this)) {
             std::clog << "Ignoring extended message, connection not in session" << std::endl;
             return false;
         }
@@ -524,39 +511,39 @@ namespace extension {
         try {
             switch(messageType) {
                 case MessageType::observe : {
-                    _plugin->processExtendedMessage<>(_endPoint, stream.readObserve());
+                    _plugin->processExtendedMessage<>(this, stream.readObserve());
                     break;
                 }
                 case MessageType::buy : {
-                    _plugin->processExtendedMessage<>(_endPoint, stream.readBuy());
+                    _plugin->processExtendedMessage<>(this, stream.readBuy());
                     break;
                 }
                 case MessageType::sell : {
-                    _plugin->processExtendedMessage<>(_endPoint, stream.readSell());
+                    _plugin->processExtendedMessage<>(this, stream.readSell());
                     break;
                 }
                 case MessageType::join_contract : {
-                    _plugin->processExtendedMessage<>(_endPoint, stream.readJoinContract());
+                    _plugin->processExtendedMessage<>(this, stream.readJoinContract());
                     break;
                 }
                 case MessageType::joining_contract : {
-                    _plugin->processExtendedMessage<>(_endPoint, stream.readJoiningContract());
+                    _plugin->processExtendedMessage<>(this, stream.readJoiningContract());
                     break;
                 }
                 case MessageType::ready : {
-                    _plugin->processExtendedMessage<>(_endPoint, stream.readReady());
+                    _plugin->processExtendedMessage<>(this, stream.readReady());
                     break;
                 }
                 case MessageType::request_full_piece : {
-                    _plugin->processExtendedMessage<>(_endPoint, stream.readRequestFullPiece());
+                    _plugin->processExtendedMessage<>(this, stream.readRequestFullPiece());
                     break;
                 }
                 case MessageType::full_piece : {
-                    _plugin->processExtendedMessage<>(_endPoint, stream.readFullPiece());
+                    _plugin->processExtendedMessage<>(this, stream.readFullPiece());
                     break;
                 }
                 case MessageType::payment : {
-                    _plugin->processExtendedMessage<>(_endPoint, stream.readPayment());
+                    _plugin->processExtendedMessage<>(this, stream.readPayment());
                     break;
                 }
                 default:
@@ -612,19 +599,12 @@ namespace extension {
             return false; // allow sending request
     }
 
-    status::PeerPlugin PeerPlugin::status(const boost::optional<protocol_session::status::Connection<libtorrent::tcp::endpoint>> & connections) const {
-        return status::PeerPlugin(_endPoint,
+    status::PeerPlugin PeerPlugin::status(const boost::optional<protocol_session::status::Connection<libtorrent::peer_id>> & connection) const {
+        return status::PeerPlugin(_connection.pid(),
+                                  _endPoint,
                                   _peerBEP10SupportStatus,
                                   _peerPaymentBEPSupportStatus,
-                                  connections);
-    }
-
-    bool PeerPlugin::undead() const  {
-        return _undead;
-    }
-
-    void PeerPlugin::setUndead(bool undead) {
-        _undead = undead;
+                                  connection);
     }
 
     libtorrent::peer_connection_handle PeerPlugin::connection() const {
@@ -635,8 +615,35 @@ namespace extension {
         _sendUninstallMappingOnNextExtendedHandshake = s;
     }
 
+    void PeerPlugin::writeExtensions() {
+      boost::shared_ptr<libtorrent::peer_connection> nativeConnection = _connection.native_handle();
+
+      assert(nativeConnection);
+
+      auto btconnection = static_cast<libtorrent::bt_peer_connection *>(nativeConnection.get());
+
+      if (btconnection->support_extensions()) {
+        btconnection->write_extensions();
+      }
+    }
+
+    libtorrent::tcp::endpoint PeerPlugin::endPoint() const {
+      return _endPoint;
+    }
+
     void PeerPlugin::drop(const libtorrent::error_code & ec) {
-        _plugin->drop(_endPoint, ec);
+      if(ec) {
+          // log string version: std::clog << "Malformed handshake received: m key not mapping to dictionary.";
+          // insert into _sentMalformedExtendedMessage
+          // insert into _misbehavedPeers
+      }
+
+      if (_undead)
+        return;
+
+      _undead = true;
+
+      _connection.disconnect(ec, libtorrent::operation_t::op_bittorrent);
     }
 
     BEPSupportStatus PeerPlugin::peerBEP10SupportStatus() const {

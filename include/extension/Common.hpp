@@ -9,14 +9,21 @@
 #define JOYSTREAM_EXTENSION_COMMON_HPP
 
 #include <libtorrent/socket_io.hpp>
+#include <libtorrent/peer_id.hpp>
 #include <functional>
 
-// hash<libtorrent::tcp::endpoint> needed for std::unordered map with this template key
 namespace std
 {
+// hash<libtorrent::tcp::endpoint> needed for std::unordered_map with this template key
 template<>
 struct hash<libtorrent::tcp::endpoint> {
     size_t operator()(const libtorrent::tcp::endpoint &) const;
+};
+
+// hash<libtorrent::peer_id> needed for std::unordered_map with this template key
+template<>
+struct hash<libtorrent::peer_id> {
+    size_t operator()(const libtorrent::peer_id &) const;
 };
 }
 
