@@ -23,6 +23,13 @@ namespace protocol_session {
     std::string IdToString<libtorrent::tcp::endpoint>(libtorrent::tcp::endpoint const&id){
         return libtorrent::print_endpoint(id);
     }
+
+    template <>
+    std::string IdToString<libtorrent::peer_id>(libtorrent::peer_id const&id){
+        char hex[41];
+        libtorrent::to_hex(reinterpret_cast<char const*>(&id[0]), libtorrent::sha1_hash::size, hex);
+        return std::string(hex);
+    }
 }
 
 namespace extension {
