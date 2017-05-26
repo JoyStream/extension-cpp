@@ -666,8 +666,27 @@ void TorrentPlugin::removeFromSession(PeerPlugin* peerPlugin) {
 protocol_session::RemovedConnectionCallbackHandler<libtorrent::peer_id> TorrentPlugin::removeConnection() {
 
     return [this](const libtorrent::peer_id & peerId, protocol_session::DisconnectCause cause) {
-        // TODO
-        // remove peerd_id from _outstandingFullPieceArrivedCalls and _outstandingLoadPieceForBuyerCalls
+        // remove call for peerId from _outstandingFullPieceArrivedCalls
+        typedef std::map<int, libtorrent::peer_id> OutstandingFullPieceArrivedCallsMap;
+
+        auto call = std::find_if(
+            std::begin(_outstandingFullPieceArrivedCalls),
+            std::end(_outstandingFullPieceArrivedCalls),
+            boost::bind(&OutstandingFullPieceArrivedCallsMap::value_type::second, _1) == peerId
+        );
+
+        if(call != std::end(_outstandingFullPieceArrivedCalls))
+          _outstandingFullPieceArrivedCalls.erase(call);
+
+        // remove call for peer_id from _outstandingLoadPieceForBuyerCalls
+        for(auto mapping : _outstandingLoadPieceForBuyerCalls) {
+            auto calls = mapping.second;
+
+            auto call = calls.find(peerId);
+
+            if(call != calls.end())
+              calls.erase(call);
+        }
 
         // Send notification
         auto peerPlugin = peer(peerId);
