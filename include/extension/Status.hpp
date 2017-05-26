@@ -27,16 +27,21 @@ namespace status {
         PeerPlugin() {}
 
         PeerPlugin(const libtorrent::peer_id & peerId,
+                   const libtorrent::tcp::endpoint & endPoint,
                    const BEPSupportStatus & peerBEP10SupportStatus,
                    const BEPSupportStatus & peerBitSwaprBEPSupportStatus,
                    const boost::optional<protocol_session::status::Connection<libtorrent::peer_id>> & connection)
             : peerId(peerId)
+            , endPoint(endPoint)
             , peerBEP10SupportStatus(peerBEP10SupportStatus)
             , peerBitSwaprBEPSupportStatus(peerBitSwaprBEPSupportStatus)
             , connection(connection) {
         }
 
-        // Endpoint: can be deduced from connection, but is worth keeping if connection pointer becomes invalid
+        // Endpoint
+        libtorrent::tcp::endpoint endPoint;
+
+        // PeerId
         libtorrent::peer_id peerId;
 
         // Indicates whether peer supports BEP10

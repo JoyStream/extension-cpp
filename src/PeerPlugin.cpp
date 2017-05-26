@@ -601,6 +601,7 @@ namespace extension {
 
     status::PeerPlugin PeerPlugin::status(const boost::optional<protocol_session::status::Connection<libtorrent::peer_id>> & connection) const {
         return status::PeerPlugin(_connection.pid(),
+                                  _endPoint,
                                   _peerBEP10SupportStatus,
                                   _peerPaymentBEPSupportStatus,
                                   connection);
