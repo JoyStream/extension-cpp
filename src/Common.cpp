@@ -6,14 +6,21 @@
  */
 
 #include <extension/Common.hpp>
+#include <libtorrent/hex.hpp>
 
-// hash<libtorrent::tcp::endpoint> needed for std::unordered map with this template key
 namespace std
 {
 
-size_t hash<libtorrent::tcp::endpoint>::operator()(const libtorrent::tcp::endpoint & pt) const {
-    return std::hash<std::string>{}(libtorrent::print_endpoint(pt));
+// hash<libtorrent::tcp::endpoint> needed for std::unordered_map with this template key
+size_t hash<libtorrent::tcp::endpoint>::operator()(const libtorrent::tcp::endpoint & ep) const {
+    return std::hash<std::string>{}(libtorrent::print_endpoint(ep));
+}
+
+// hash<libtorrent::peer_id> needed for std::unordered_map with this template key
+size_t hash<libtorrent::peer_id>::operator()(const libtorrent::peer_id & peerId) const {
+    char hex[41];
+    libtorrent::to_hex(reinterpret_cast<char const*>(&peerId[0]), libtorrent::sha1_hash::size, hex);
+    return std::hash<std::string>{}(hex);
 }
 
 }
-

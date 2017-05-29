@@ -26,18 +26,23 @@ namespace status {
 
         PeerPlugin() {}
 
-        PeerPlugin(const libtorrent::tcp::endpoint & endPoint,
+        PeerPlugin(const libtorrent::peer_id & peerId,
+                   const libtorrent::tcp::endpoint & endPoint,
                    const BEPSupportStatus & peerBEP10SupportStatus,
                    const BEPSupportStatus & peerBitSwaprBEPSupportStatus,
-                   const boost::optional<protocol_session::status::Connection<libtorrent::tcp::endpoint>> & connection)
-            : endPoint(endPoint)
+                   const boost::optional<protocol_session::status::Connection<libtorrent::peer_id>> & connection)
+            : peerId(peerId)
+            , endPoint(endPoint)
             , peerBEP10SupportStatus(peerBEP10SupportStatus)
             , peerBitSwaprBEPSupportStatus(peerBitSwaprBEPSupportStatus)
             , connection(connection) {
         }
 
-        // Endpoint: can be deduced from connection, but is worth keeping if connection pointer becomes invalid
+        // Endpoint
         libtorrent::tcp::endpoint endPoint;
+
+        // PeerId
+        libtorrent::peer_id peerId;
 
         // Indicates whether peer supports BEP10
         BEPSupportStatus peerBEP10SupportStatus;
@@ -46,7 +51,7 @@ namespace status {
         BEPSupportStatus peerBitSwaprBEPSupportStatus;
 
         // *** TEMPORARY ***: Status of connection
-        boost::optional<protocol_session::status::Connection<libtorrent::tcp::endpoint>> connection;
+        boost::optional<protocol_session::status::Connection<libtorrent::peer_id>> connection;
     };
 
     struct TorrentPlugin {
@@ -54,7 +59,7 @@ namespace status {
         TorrentPlugin() {}
 
         TorrentPlugin(const libtorrent::sha1_hash & infoHash,
-                      const protocol_session::status::Session<libtorrent::tcp::endpoint> & session,
+                      const protocol_session::status::Session<libtorrent::peer_id> & session,
                       const extension::TorrentPlugin::LibtorrentInteraction & libtorrentInteraction)
             : infoHash(infoHash)
             , session(session)
@@ -65,7 +70,7 @@ namespace status {
         libtorrent::sha1_hash infoHash;
 
         // Status of session
-        protocol_session::status::Session<libtorrent::tcp::endpoint> session;
+        protocol_session::status::Session<libtorrent::peer_id> session;
 
         // Libtorrent Interaction mode
         extension::TorrentPlugin::LibtorrentInteraction libtorrentInteraction;

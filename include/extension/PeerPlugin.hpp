@@ -174,13 +174,13 @@ namespace status {
         }
 
         // Status of plugin
-        status::PeerPlugin status(const boost::optional<protocol_session::status::Connection<libtorrent::tcp::endpoint>> & connections) const;
-
-        // Getters
-        bool undead() const;
-        void setUndead(bool);
+        status::PeerPlugin status(const boost::optional<protocol_session::status::Connection<libtorrent::peer_id>> & connections) const;
 
         libtorrent::peer_connection_handle connection() const;
+
+        libtorrent::tcp::endpoint endPoint() const;
+
+        void writeExtensions();
 
         void setSendUninstallMappingOnNextExtendedHandshake(bool);
 
@@ -188,22 +188,20 @@ namespace status {
 
         BEPSupportStatus peerPaymentBEPSupportStatus() const;
 
-        /**
-        bool peerTimedOut(int maxDelay) const;
-
-        libtorrent::tcp::endpoint endPoint() const;
-
-        libtorrent::error_code deletionErrorCode() const;
-        */
-
-    private:
-
         // Dropps connection by
         // 1) Issues disconnect request to peer_connection
         // 2) If present, removing from session
         // 3) Noting misbehaviour, if any
         // 4) Dropping plugin reference
         void drop(const libtorrent::error_code &);
+
+        /**
+        bool peerTimedOut(int maxDelay) const;
+
+        libtorrent::error_code deletionErrorCode() const;
+        */
+
+    private:
 
         // Whether we have initiated dropping the peer, that is disconnecting the peer_connection
         // and removing the peer_plugin reference in the corresponding TorrentPlugin (_plugin)
