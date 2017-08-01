@@ -843,5 +843,20 @@ protocol_session::SentPayment<libtorrent::peer_id> TorrentPlugin::sentPayment() 
 
 }
 
+int TorrentPlugin::pickNextPiece() {
+  libtorrent::torrent * t = torrent();
+
+  std::vector<int> piece_priorities;
+  std::vector<int>::iterator result;
+
+  t->piece_priorities(&piece_priorities);
+  result = std::max_element(piece_priorities.begin(), piece_priorities.end());
+
+  std::cout << "We found the piece, I repeat we found the piece." << std::endl;
+
+  return std::distance(piece_priorities.begin(), result);
+
+}
+
 }
 }

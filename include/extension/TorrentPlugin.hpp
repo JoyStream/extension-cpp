@@ -184,6 +184,8 @@ private:
     // Removes peer from session, if present
     void removeFromSession(PeerPlugin*);
 
+    int pickNextPiece(); 
+
     // Processes extended message from peer
     template<class M>
     void processExtendedMessage(PeerPlugin* peerPlugin, const M &extendedMessage){
