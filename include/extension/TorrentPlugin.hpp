@@ -148,6 +148,8 @@ public:
 
     void setLibtorrentInteraction(LibtorrentInteraction);
 
+    void dropPeer (const libtorrent::peer_id &);
+
 private:
 
     // Friendship required to make calls to session

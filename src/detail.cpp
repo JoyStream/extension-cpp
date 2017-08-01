@@ -282,6 +282,15 @@ void RequestVariantVisitor::operator()(const request::SetLibtorrentInteraction &
     sendRequestResult(std::bind(r.handler, e));
 }
 
+void RequestVariantVisitor::operator()(const request::DropPeer & r) {
+
+    auto e = runTorrentPluginRequest(r.infoHash, [r](const boost::shared_ptr<TorrentPlugin> & plugin) {
+        plugin->dropPeer(r.peerId);
+    });
+
+    sendRequestResult(std::bind(r.handler, e));
+}
+
 std::exception_ptr RequestVariantVisitor::runTorrentPluginRequest(const libtorrent::sha1_hash & infoHash,
                                                                   const std::function<void(const boost::shared_ptr<TorrentPlugin> &)> & f) const {
 
