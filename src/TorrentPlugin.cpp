@@ -475,7 +475,7 @@ void TorrentPlugin::toBuyMode(const protocol_wire::BuyerTerms & terms) {
 void TorrentPlugin::startDownloading(const Coin::Transaction & contractTx,
                                      const protocol_session::PeerToStartDownloadInformationMap<libtorrent::peer_id> & peerToStartDownloadInformationMap) {
 
-    _session.startDownloading(contractTx, peerToStartDownloadInformationMap);
+    _session.startDownloading(contractTx, peerToStartDownloadInformationMap, std::bind(&TorrentPlugin::pickNextPiece, this));
 
     // Send notification
     _alertManager->emplace_alert<alert::DownloadStarted>(_torrent, contractTx, peerToStartDownloadInformationMap);
