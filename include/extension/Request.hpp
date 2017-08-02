@@ -314,7 +314,8 @@ struct DropPeer {
   DropPeer(const libtorrent::sha1_hash & infoHash,
            const libtorrent::peer_id & peerId,
            const SubroutineHandler & handler)
-    :  peerId(peerId)
+    :  infoHash(infoHash)
+     , peerId(peerId)
      , handler(handler) {}
 
      libtorrent::sha1_hash infoHash;
