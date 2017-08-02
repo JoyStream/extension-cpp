@@ -555,6 +555,18 @@ void TorrentPlugin::setLibtorrentInteraction(LibtorrentInteraction e) {
     _libtorrentInteraction = e;
 }
 
+void TorrentPlugin::dropPeer (const libtorrent::peer_id & peerId) {
+  if (_peersCompletedHandshake.count(peerId) == 0) return;
+
+  auto wPeerPlugin = _peersCompletedHandshake[peerId];
+
+  auto peer = wPeerPlugin.lock();
+
+  libtorrent::error_code ec;
+
+  peer->drop(ec);
+}
+
 protocol_session::SessionState TorrentPlugin::sessionState() const {
     return _session.state();
 }

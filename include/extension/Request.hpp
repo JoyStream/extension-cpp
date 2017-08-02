@@ -309,6 +309,20 @@ struct SetLibtorrentInteraction {
     SubroutineHandler handler;
 };
 
+struct DropPeer {
+  DropPeer() {}
+  DropPeer(const libtorrent::sha1_hash & infoHash,
+           const libtorrent::peer_id & peerId,
+           const SubroutineHandler & handler)
+    :  infoHash(infoHash)
+     , peerId(peerId)
+     , handler(handler) {}
+
+     libtorrent::sha1_hash infoHash;
+     libtorrent::peer_id peerId;
+     SubroutineHandler handler;
+};
+
 /**
 struct ChangeDownloadLocation : public TorrentPluginRequest {
     typedef SubroutineResult<ChangeDownloadLocation> Result;
