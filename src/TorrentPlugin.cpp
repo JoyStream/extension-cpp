@@ -475,7 +475,7 @@ void TorrentPlugin::toBuyMode(const protocol_wire::BuyerTerms & terms) {
 void TorrentPlugin::startDownloading(const Coin::Transaction & contractTx,
                                      const protocol_session::PeerToStartDownloadInformationMap<libtorrent::peer_id> & peerToStartDownloadInformationMap) {
 
-    _session.startDownloading(contractTx, peerToStartDownloadInformationMap, std::bind(&TorrentPlugin::pickNextPiece, this));
+    _session.startDownloading(contractTx, peerToStartDownloadInformationMap, std::bind(&TorrentPlugin::pickNextPiece, this, std::placeholders::_1));
 
     // Send notification
     _alertManager->emplace_alert<alert::DownloadStarted>(_torrent, contractTx, peerToStartDownloadInformationMap);
@@ -843,18 +843,38 @@ protocol_session::SentPayment<libtorrent::peer_id> TorrentPlugin::sentPayment() 
 
 }
 
-int TorrentPlugin::pickNextPiece() {
+int TorrentPlugin::pickNextPiece(const std::vector<protocol_session::detail::Piece<libtorrent::peer_id>> * pieces) {
   libtorrent::torrent * t = torrent();
 
   std::vector<int> piece_priorities;
-  std::vector<int>::iterator result;
+  std::vector<std::pair<int, int>> unassignedPiecePrioritiesByIndex;
+  std::vector<std::pair<int, int>>::iterator result;
 
   t->piece_priorities(&piece_priorities);
-  result = std::max_element(piece_priorities.begin(), piece_priorities.end());
 
-  std::cout << "We found the piece, I repeat we found the piece." << std::endl;
+  // Create a vector of all the unassigned piece with their original index
+  // Can it be improve with a std::map ?
+  for (int x = 0; x < piece_priorities.size(); x++) {
+    if ((*pieces)[x].state() == protocol_session::PieceState::unassigned) {
+      unassignedPiecePrioritiesByIndex.insert(unassignedPiecePrioritiesByIndex.begin(), std::make_pair(x, piece_priorities[x]));
+    }
+  }
 
-  return std::distance(piece_priorities.begin(), result);
+  result = std::max_element(unassignedPiecePrioritiesByIndex.begin(), unassignedPiecePrioritiesByIndex.end(), [](std::pair<int, int> currentMax, std::pair<int, int> nextValue) {
+      return currentMax.second<nextValue.second;
+  });
+
+  std::pair<int, int> indexOfUnassigned = unassignedPiecePrioritiesByIndex[std::distance(unassignedPiecePrioritiesByIndex.begin(), result)];
+
+
+
+  if ((*pieces)[indexOfUnassigned.first].state() == protocol_session::PieceState::unassigned) {
+    std::cout << "Unassigned" << std::endl;
+  }
+
+  std::cout << "We found the piece, I repeat we found the piece : " << indexOfUnassigned.first << std::endl;
+
+  return indexOfUnassigned.first;
 
 }
 
