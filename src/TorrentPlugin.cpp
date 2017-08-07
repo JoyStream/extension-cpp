@@ -866,14 +866,6 @@ int TorrentPlugin::pickNextPiece(const std::vector<protocol_session::detail::Pie
 
   std::pair<int, int> indexOfUnassigned = unassignedPiecePrioritiesByIndex[std::distance(unassignedPiecePrioritiesByIndex.begin(), result)];
 
-
-
-  if ((*pieces)[indexOfUnassigned.first].state() == protocol_session::PieceState::unassigned) {
-    std::cout << "Unassigned" << std::endl;
-  }
-
-  std::cout << "We found the piece, I repeat we found the piece : " << indexOfUnassigned.first << std::endl;
-
   return indexOfUnassigned.first;
 
 }
