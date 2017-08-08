@@ -860,12 +860,20 @@ int TorrentPlugin::pickNextPiece(const std::vector<protocol_session::detail::Pie
     }
   }
 
+  // If the vector is mpty it means that we don't have unassigned piece anymore
+  if (unassignedPiecePrioritiesByIndex.empty()) {
+    throw protocol_session::exception::NoPieceAvailableException();
+  }
+
+  // If we have unassigned piece we look for the highest priority first
   result = std::max_element(unassignedPiecePrioritiesByIndex.begin(), unassignedPiecePrioritiesByIndex.end(), [](std::pair<int, int> currentMax, std::pair<int, int> nextValue) {
       return currentMax.second<nextValue.second;
   });
 
+  // we found a pair
   std::pair<int, int> indexOfUnassigned = unassignedPiecePrioritiesByIndex[std::distance(unassignedPiecePrioritiesByIndex.begin(), result)];
 
+  // return the index of the unassigned piece
   return indexOfUnassigned.first;
 
 }
