@@ -846,35 +846,24 @@ protocol_session::SentPayment<libtorrent::peer_id> TorrentPlugin::sentPayment() 
 int TorrentPlugin::pickNextPiece(const std::vector<protocol_session::detail::Piece<libtorrent::peer_id>> * pieces) {
   libtorrent::torrent * t = torrent();
 
-  std::vector<int> piece_priorities;
-  std::vector<std::pair<int, int>> unassignedPiecePrioritiesByIndex;
-  std::vector<std::pair<int, int>>::iterator result;
+  // Initialization
+  int indexOfNextPiece = 0;
+  int piecePriority = t->piece_priority(indexOfNextPiece);
 
-  t->piece_priorities(&piece_priorities);
-
-  // Create a vector of all the unassigned piece with their original index
-  // Can it be improve with a std::map ?
-  for (int x = 0; x < piece_priorities.size(); x++) {
-    if ((*pieces)[x].state() == protocol_session::PieceState::unassigned) {
-      unassignedPiecePrioritiesByIndex.insert(unassignedPiecePrioritiesByIndex.begin(), std::make_pair(x, piece_priorities[x]));
+  for (int index = 0; index < pieces->size(); index++) {
+    if (((*pieces)[index].state() == protocol_session::PieceState::unassigned) && (piecePriority < t->piece_priority(index))) {
+      indexOfNextPiece = index;
+      piecePriority = t->piece_priority(indexOfNextPiece);
     }
   }
 
-  // If the vector is mpty it means that we don't have unassigned piece anymore
-  if (unassignedPiecePrioritiesByIndex.empty()) {
+  // If it is unassigned throw error
+  if ((*pieces)[indexOfNextPiece].state() != protocol_session::PieceState::unassigned) {
     throw protocol_session::exception::NoPieceAvailableException();
   }
 
-  // If we have unassigned piece we look for the highest priority first
-  result = std::max_element(unassignedPiecePrioritiesByIndex.begin(), unassignedPiecePrioritiesByIndex.end(), [](std::pair<int, int> currentMax, std::pair<int, int> nextValue) {
-      return currentMax.second<nextValue.second;
-  });
-
-  // we found a pair
-  std::pair<int, int> indexOfUnassigned = unassignedPiecePrioritiesByIndex[std::distance(unassignedPiecePrioritiesByIndex.begin(), result)];
-
-  // return the index of the unassigned piece
-  return indexOfUnassigned.first;
+  // return the index
+  return indexOfNextPiece;
 
 }
 
