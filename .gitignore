@@ -2,3 +2,10 @@ build/
 conanbuildinfo.*
 conaninfo.txt
 
+# Default CLion Cmake build folder
+cmake-build-debug
+cmake-build-releas
+
+# CLion IDE settings directory
+.idea
+
