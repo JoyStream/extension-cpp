@@ -1,4 +1,2 @@
 build/
-conanbuildinfo.*
-conaninfo.txt
-
+*.pyc
