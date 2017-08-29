@@ -475,7 +475,7 @@ void TorrentPlugin::toBuyMode(const protocol_wire::BuyerTerms & terms) {
 void TorrentPlugin::startDownloading(const Coin::Transaction & contractTx,
                                      const protocol_session::PeerToStartDownloadInformationMap<libtorrent::peer_id> & peerToStartDownloadInformationMap) {
 
-    _session.startDownloading(contractTx, peerToStartDownloadInformationMap);
+    _session.startDownloading(contractTx, peerToStartDownloadInformationMap, std::bind(&TorrentPlugin::pickNextPiece, this, std::placeholders::_1));
 
     // Send notification
     _alertManager->emplace_alert<alert::DownloadStarted>(_torrent, contractTx, peerToStartDownloadInformationMap);
@@ -852,6 +852,30 @@ protocol_session::SentPayment<libtorrent::peer_id> TorrentPlugin::sentPayment() 
 
         manager.emplace_alert<alert::SentPayment>(h, endPoint, peerId, paymentIncrement, totalNumberOfPayments, totalAmountPaid, pieceIndex);
     };
+
+}
+
+int TorrentPlugin::pickNextPiece(const std::vector<protocol_session::detail::Piece<libtorrent::peer_id>> * pieces) {
+  libtorrent::torrent * t = torrent();
+
+  // Initialization
+  int indexOfNextPiece = 0;
+  int piecePriority = t->piece_priority(indexOfNextPiece);
+
+  for (int index = 0; index < pieces->size(); index++) {
+    if (((*pieces)[index].state() == protocol_session::PieceState::unassigned) && (piecePriority < t->piece_priority(index))) {
+      indexOfNextPiece = index;
+      piecePriority = t->piece_priority(indexOfNextPiece);
+    }
+  }
+
+  // If it is unassigned throw error
+  if ((*pieces)[indexOfNextPiece].state() != protocol_session::PieceState::unassigned) {
+    throw protocol_session::exception::NoPieceAvailableException();
+  }
+
+  // return the index
+  return indexOfNextPiece;
 
 }
 

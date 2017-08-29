@@ -186,6 +186,8 @@ private:
     // Removes peer from session, if present
     void removeFromSession(PeerPlugin*);
 
+    int pickNextPiece(const std::vector<protocol_session::detail::Piece<libtorrent::peer_id>> * pieces); 
+
     // Processes extended message from peer
     template<class M>
     void processExtendedMessage(PeerPlugin* peerPlugin, const M &extendedMessage){
