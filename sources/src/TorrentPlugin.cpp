@@ -860,7 +860,7 @@ int TorrentPlugin::pickNextPiece(const std::vector<protocol_session::detail::Pie
 
   // Initialization
   int indexOfNextPiece = 0;
-  int piecePriority = t->piece_priority(indexOfNextPiece);
+  int piecePriority = 0;
 
   for (int index = 0; index < pieces->size(); index++) {
     if (((*pieces)[index].state() == protocol_session::PieceState::unassigned) && (piecePriority < t->piece_priority(index))) {
