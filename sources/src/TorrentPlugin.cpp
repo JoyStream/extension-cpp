@@ -859,23 +859,36 @@ int TorrentPlugin::pickNextPiece(const std::vector<protocol_session::detail::Pie
   libtorrent::torrent * t = torrent();
 
   // Initialization
-  int indexOfNextPiece = 0;
-  int piecePriority = 0;
+  int pickedIndex = 0;
+  int pickedPriority = 0;
+  bool picked = false;
 
   for (int index = 0; index < pieces->size(); index++) {
-    if (((*pieces)[index].state() == protocol_session::PieceState::unassigned) && (piecePriority < t->piece_priority(index))) {
-      indexOfNextPiece = index;
-      piecePriority = t->piece_priority(indexOfNextPiece);
+    // Only interested in unassigned pieces
+    if (pieces->at(index).state() != protocol_session::PieceState::unassigned) continue;
+
+    // Pick first unassigned piece
+    if (!picked) {
+      picked = true;
+      pickedPriority = t->piece_priority(index);
+      pickedIndex = index;
+      continue;
+    }
+
+    // Pick piece if it has a higher priority
+    if (t->piece_priority(index) > pickedPriority) {
+      pickedPriority = t->piece_priority(index);
+      pickedIndex = index;
     }
   }
 
-  // If it is unassigned throw error
-  if ((*pieces)[indexOfNextPiece].state() != protocol_session::PieceState::unassigned) {
+  // If no piece was picked throw
+  if (!picked) {
     throw protocol_session::exception::NoPieceAvailableException();
   }
 
-  // return the index
-  return indexOfNextPiece;
+  // return the picked piece index
+  return pickedIndex;
 
 }
 
