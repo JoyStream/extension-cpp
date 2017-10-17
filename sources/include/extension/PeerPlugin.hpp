@@ -158,19 +158,19 @@ namespace status {
             try {
                 written = writer.write(payload);
             } catch(std::exception &e) {
-                std::clog << "Error writing message payload, message not sent." << std::endl;
+                std::clog << "Error Writing message payload, " << getMessageName(messageType) << " message not sent!" << std::endl;
                 return;
             }
 
             if(size != written) {
-                std::clog << "Error payload not fully written, message not sent." << std::endl;
+                std::clog << "Error Payload not fully written, " << getMessageName(messageType) << " message not sent!" << std::endl;
                 return;
             }
 
             // Send message buffer
             m.send(_connection);
 
-            std::clog << "SENT:" << getMessageName(messageType) << " = " << written << "bytes" << std::endl;
+            std::clog << "SENT: " << getMessageName(messageType) << " (" << written << ") bytes" << std::endl;
         }
 
         // Status of plugin
