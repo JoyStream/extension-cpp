@@ -54,7 +54,7 @@ namespace extension {
     }
 
     PeerPlugin::~PeerPlugin() {
-        std::clog << "~PeerPlugin() called." << std::endl;
+        //std::clog << "~PeerPlugin() called." << std::endl;
     }
 
     char const* PeerPlugin::type() const {
@@ -176,6 +176,7 @@ namespace extension {
         if(_peerBEP10SupportStatus != BEPSupportStatus::supported) {
 
             // Remove peer
+            std::clog << "Dropping Peer: bad handshake (non-BEP10 peer sent extended handshake)" << std::endl;
             libtorrent::error_code ec; // "Peer misbehaved: didn't support BEP10, but it sent extended handshake."
             drop(ec);
 
@@ -191,6 +192,7 @@ namespace extension {
             _peerPaymentBEPSupportStatus = BEPSupportStatus::not_supported;
 
             // Remove peer
+            std::clog << "Dropping Peer: bad handshake (not dictionary)" << std::endl;
             libtorrent::error_code ec; // "Malformed handshake received: not dictionary."
             drop(ec);
 
@@ -211,6 +213,7 @@ namespace extension {
                 // If the version string is not in the extension, it has not properly sent an unmapping
 
                 // Remove peer
+                std::clog << "Dropping Peer: bad handshake - peer sent full mapping without first sending unmapping" << std::endl;
                 libtorrent::error_code ec; // "Malformed protocol version format provided: " << versionString
                 drop(ec);
             }
@@ -230,6 +233,7 @@ namespace extension {
             _peerPaymentBEPSupportStatus = BEPSupportStatus::not_supported;
 
             // Remove peer
+            std::clog << "Dropping Peer: bad handshake (malformed protocol vesrion format)" << std::endl;
             libtorrent::error_code ec; // "Malformed protocol version format provided: " << versionString
             drop(ec);
 
@@ -246,6 +250,7 @@ namespace extension {
             _peerPaymentBEPSupportStatus = BEPSupportStatus::not_supported;
 
             // Remove peer
+            std::clog << "Dropping Peer: bad handshake (m key not present)" << std::endl;
             libtorrent::error_code ec; // "Malformed handshake received: m key not present."
             drop(ec);
 
@@ -260,6 +265,7 @@ namespace extension {
             _peerPaymentBEPSupportStatus  = BEPSupportStatus::not_supported;
 
             // Remove peer
+            std::clog << "Dropping Peer: bad handshake (m key not mapping to dictionary)" << std::endl;
             libtorrent::error_code ec; // "Malformed handshake received: m key not mapping to dictionary."
             drop(ec);
 
@@ -282,6 +288,7 @@ namespace extension {
                 _peerPaymentBEPSupportStatus  = BEPSupportStatus::not_supported;
 
                 // Remove peer
+                std::clog << "Dropping Peer: bad handshake (peer already sent full mapping)" << std::endl;
                 libtorrent::error_code ec; // "Peer misbehaved: sent uninstall mapping, despite not recently annoncing valid mapping to uninstall."
                 drop(ec);
 
@@ -299,11 +306,11 @@ namespace extension {
             // If the uninstall mapping was valid we do not need to disconnect the peer
             if(e.problem == exception::InvalidMessageMappingDictionary::Problem::UninstallMappingFound) {
                if(peerMappingWasPreviouslySet) {
-                    std::clog << "Uninstall mapping was found." << std::endl;
+                    std::clog << "Removing Peer from Session - Uninstall mapping was sent." << std::endl;
                     // Remove from session if present
                     _plugin->removeFromSession(this);
                } else {
-                    std::clog << "Uninstall mapping was found, but no mapping has been previoulsy installed" << std::endl;
+                    std::clog << "Dropping Peer: bad handshake (attempting to uninstall mapping but no mapping exists)" << std::endl;
                     libtorrent::error_code ec;
                     drop(ec);
                }
@@ -449,12 +456,12 @@ namespace extension {
 
         // If this peer is not part of this session, then we ignore the message
         if(_plugin->_session.mode() == protocol_session::SessionMode::not_set) {
-            std::clog << "Ignoring extended message, session mode not set" << std::endl;
+            std::clog << "Warning: Ignoring extended message, session mode not set" << std::endl;
             return false;
         }
 
         if(!_plugin->peerInSession(this)) {
-            std::clog << "Ignoring extended message, connection not in session" << std::endl;
+            std::clog << "Warning: Ignoring extended message, connection not in session" << std::endl;
             return false;
         }
 
@@ -552,7 +559,7 @@ namespace extension {
 
         } catch (std::exception & e) {
 
-            std::clog << "Extended Message was Malformed" << std::endl;
+            std::clog << "Dropping Peer: Extended Message was Malformed" << std::endl;
 
             // Remove this peer
             libtorrent::error_code ec; // <-- "Malformed extended message received, removing."
