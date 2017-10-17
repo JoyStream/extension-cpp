@@ -50,7 +50,7 @@ TorrentPlugin::TorrentPlugin(Plugin * plugin,
 }
 
 TorrentPlugin::~TorrentPlugin() {
-    std::clog << "~TorrentPlugin()" << std::endl;
+    //std::clog << "~TorrentPlugin()" << std::endl;
 }
 
 boost::shared_ptr<libtorrent::peer_plugin> TorrentPlugin::new_connection(const libtorrent::peer_connection_handle & connection) {
@@ -718,8 +718,11 @@ protocol_session::RemovedConnectionCallbackHandler<libtorrent::peer_id> TorrentP
         // triggers callback.
         if(cause == protocol_session::DisconnectCause::client)
             return;
-        else // all other reasons are considered misbehaviour
-            _misbehavedPeers.insert(endPoint);
+        else {
+          std::clog << "Adding peer to misbehavedPeers list: " << endPoint << " cause: " << (int)cause << std::endl;
+          // all other reasons are considered misbehaviour
+          _misbehavedPeers.insert(endPoint);
+        }
 
         // *** Record cause for some purpose? ***
 
