@@ -43,7 +43,7 @@ namespace extension {
         , _clientMapping(ExtendedMessageIdMapping::consecutiveIdsStartingAt(_minimumMessageId))
         , _sendUninstallMappingOnNextExtendedHandshake(false)
         , _peerBEP10SupportStatus(BEPSupportStatus::unknown)
-        , _peerPaymentBEPSupportStatus(BEPSupportStatus::supported) {
+        , _peerPaymentBEPSupportStatus(BEPSupportStatus::unknown) {
 
         // 0 is not a valid minimum message id
         if(_minimumMessageId == 0)
