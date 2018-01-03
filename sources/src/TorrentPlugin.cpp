@@ -60,7 +60,8 @@ TorrentPlugin::TorrentPlugin(Plugin * plugin,
     , _alertManager(alertManager)
     , _policy(policy)
     , _libtorrentInteraction(libtorrentInteraction)
-    , _infoHash(torrent.info_hash()) {
+    , _infoHash(torrent.info_hash())
+    , _session(plugin->network()) {
 }
 
 TorrentPlugin::~TorrentPlugin() {
