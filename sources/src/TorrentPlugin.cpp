@@ -735,22 +735,27 @@ protocol_session::RemovedConnectionCallbackHandler<libtorrent::peer_id> TorrentP
 protocol_session::FullPieceArrived<libtorrent::peer_id> TorrentPlugin::fullPieceArrived() {
 
     return [this](const libtorrent::peer_id & peerId, const protocol_wire::PieceData & pieceData, int index) -> void {
+        if (!torrent()->have_piece(index)) {
+          // Make sure no outstanding calls exist for this index
+          assert(!_outstandingFullPieceArrivedCalls.count(index));
 
-        // Make sure no outstanding calls exist for this index
-        assert(!_outstandingFullPieceArrivedCalls.count(index));
+          _outstandingFullPieceArrivedCalls[index] = peerId;
 
-        _outstandingFullPieceArrivedCalls[index] = peerId;
-
-        // Tell libtorrent to validate piece
-        // last argument is a flag which presently seems to only test
-        // flags & torrent::overwrite_existing, which seems to be whether
-        // the piece should be overwritten if it is already present
-        //
-        // libtorrent::torrent_plugin::on_piece_pass()
-        // libtorrent::torrent_plugin::on_piece_failed()
-        // processes result of checking
-
-        torrent()->add_piece(index, pieceData.piece().get(), 0);
+          // Tell libtorrent to validate piece
+          // last argument is a flag which presently seems to only test
+          // flags & torrent::overwrite_existing, which seems to be whether
+          // the piece should be overwritten if it is already present
+          //
+          // libtorrent::torrent_plugin::on_piece_pass()
+          // libtorrent::torrent_plugin::on_piece_failed()
+          // processes result of checking
+          torrent()->add_piece(index, pieceData.piece().get(), 0);
+        } else {
+          // We already received the piece from another peer (most likely a non joystream peer)
+          // For now we ignore the validity of the piece data
+          // tell session about endpoint and piece
+          _session.validPieceReceivedOnConnection(peerId, index);
+        }
     };
 }
 
