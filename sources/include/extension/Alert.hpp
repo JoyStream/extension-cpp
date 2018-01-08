@@ -548,6 +548,19 @@ namespace alert {
         const Coin::KeyPair contractKeyPair;
         const Coin::PubKeyHash finalPkHash;
     };
+
+    struct AllSellersGone : public libtorrent::torrent_alert {
+
+        AllSellersGone(libtorrent::aux::stack_allocator& alloc,
+                       const libtorrent::torrent_handle & h)
+            : libtorrent::torrent_alert(alloc, h) {}
+
+        TORRENT_DEFINE_ALERT(DownloadStarted, libtorrent::user_alert_id + 32)
+        static const int static_category = alert::status_notification;
+        virtual std::string message() const override {
+            return torrent_alert::message() + " all sellers gone";
+        }
+    };
 }
 }
 }
