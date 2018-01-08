@@ -215,6 +215,7 @@ private:
     protocol_session::AnchorAnnounced<libtorrent::peer_id> anchorAnnounced();
     protocol_session::ReceivedValidPayment<libtorrent::peer_id> receivedValidPayment();
     protocol_session::SentPayment<libtorrent::peer_id> sentPayment();
+    protocol_session::AllSellersGone allSellersGone();
 
     /// Members
 

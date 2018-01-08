@@ -466,7 +466,8 @@ void TorrentPlugin::toBuyMode(const protocol_wire::BuyerTerms & terms) {
                        fullPieceArrived(),
                        sentPayment(),
                        terms,
-                       torrentPieceInformation());
+                       torrentPieceInformation(),
+                       allSellersGone());
 
     // Send notification
     _alertManager->emplace_alert<alert::SessionToBuyMode>(_torrent, terms);
@@ -856,6 +857,17 @@ protocol_session::SentPayment<libtorrent::peer_id> TorrentPlugin::sentPayment() 
         manager.emplace_alert<alert::SentPayment>(h, endPoint, peerId, paymentIncrement, totalNumberOfPayments, totalAmountPaid, pieceIndex);
     };
 
+}
+
+protocol_session::AllSellersGone TorrentPlugin::allSellersGone() {
+  // Get alert manager and handle for torrent
+  libtorrent::torrent * t = torrent();
+  libtorrent::alert_manager & manager = t->alerts();
+  libtorrent::torrent_handle h = t->get_handle();
+
+  return [&manager, h, this](void) -> void {
+    manager.emplace_alert<alert::AllSellersGone>(h);
+  };
 }
 
 int TorrentPlugin::pickNextPiece(const std::vector<protocol_session::detail::Piece<libtorrent::peer_id>> * pieces) {
