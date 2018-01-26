@@ -241,6 +241,20 @@ namespace extension {
             return true;
         }
 
+        // Only communicate with peers with same protocol major version number
+        if(_protocolVersionOfPeer.major() != protocol_statemachine::CBStateMachine::protocolVersion.major()) {
+          // Mark peer as not supporting this extension
+          _peerPaymentBEPSupportStatus = BEPSupportStatus::not_supported;
+
+          // Remove peer
+          std::clog << "Dropping Peer: (incompatible protocol vesrion)" << std::endl;
+          libtorrent::error_code ec;
+          drop(ec);
+
+          // Keep us around
+          return true;
+        }
+
         // Try to extract m key, if its not present, then we are done
         libtorrent::bdecode_node m = handshake.dict_find_dict("m");
 
