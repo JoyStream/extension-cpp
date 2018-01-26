@@ -14,6 +14,7 @@
 #include <libtorrent/peer_connection_handle.hpp>
 #include <libtorrent/bt_peer_connection.hpp>
 #include <libtorrent/socket_io.hpp> // print_endpoint
+#include <libtorrent/hasher.hpp>
 
 namespace joystream {
 
@@ -164,60 +165,12 @@ void TorrentPlugin::on_piece_pass(int index) {
 
     // Make sure we are in correct mode, as mode changed may have occured
     if(_session.mode() == protocol_session::SessionMode::buying) {
-
-        auto it = _outstandingFullPieceArrivedCalls.find(index);
-
-        // If this validation is not due to us
-        if(it == _outstandingFullPieceArrivedCalls.cend()) {
-
-            // then just tell session about it
-            _session.pieceDownloaded(index);
-
-        } else {
-            auto peerId = it->second;
-            auto peerPlugin = peer(peerId);
-            auto endPoint = peerPlugin->endPoint();
-
-            _alertManager->emplace_alert<alert::ValidPieceArrived>(_torrent, endPoint, peerId, index);
-
-            // if its due to us, then tell session about endpoint and piece
-            _session.validPieceReceivedOnConnection(peerId, index);
-
-            // and remove call
-            _outstandingFullPieceArrivedCalls.erase(it);
-        }
+        _session.pieceDownloaded(index);
     }
 }
 
 void TorrentPlugin::on_piece_failed(int index) {
 
-    // Make sure we are in correct mode, as mode changed may have occured
-    if(_session.mode() == protocol_session::SessionMode::buying) {
-
-        auto it = _outstandingFullPieceArrivedCalls.find(index);
-
-        // If this validation is not due to us
-        if(it == _outstandingFullPieceArrivedCalls.cend()) {
-
-            // then there is nothing to do
-
-        } else {
-
-            // if its due to us, then
-
-            auto peerId = it->second;
-            auto peerPlugin = peer(peerId);
-            auto endPoint = peerPlugin->endPoint();
-
-            _alertManager->emplace_alert<alert::InvalidPieceArrived>(_torrent, endPoint, peerId, index);
-
-            // tell session about endpoint and piece
-            _session.invalidPieceReceivedOnConnection(peerId, index);
-
-            // and remove call
-            _outstandingFullPieceArrivedCalls.erase(it);
-        }
-    }
 }
 
 void TorrentPlugin::tick() {
@@ -407,8 +360,6 @@ void TorrentPlugin::toObserveMode() {
     // NB: We are doing clearing regardless of whether operation is successful!
     if(_session.mode() == protocol_session::SessionMode::selling)
         _outstandingLoadPieceForBuyerCalls.clear();
-    else if(_session.mode() == protocol_session::SessionMode::buying)
-        _outstandingFullPieceArrivedCalls.clear();
 
     _session.toObserveMode(removeConnection());
 
@@ -420,11 +371,6 @@ void TorrentPlugin::toSellMode(const protocol_wire::SellerTerms & terms) {
 
     // Should have been cleared before
     assert(_outstandingLoadPieceForBuyerCalls.empty());
-
-    // Clear relevant mappings
-    // NB: We are doing clearing regardless of whether operation is successful!
-    if(_session.mode() == protocol_session::SessionMode::buying)
-        _outstandingFullPieceArrivedCalls.clear();
 
     if(_torrent.status().state != libtorrent::torrent_status::state_t::seeding) {
         throw exception::InvalidModeTransition();
@@ -449,9 +395,6 @@ void TorrentPlugin::toSellMode(const protocol_wire::SellerTerms & terms) {
 }
 
 void TorrentPlugin::toBuyMode(const protocol_wire::BuyerTerms & terms) {
-
-    // Should have been cleared before
-    assert(_outstandingFullPieceArrivedCalls.empty());
 
     // Clear relevant mappings
     // NB: We are doing clearing regardless of whether operation is successful!
@@ -686,18 +629,6 @@ void TorrentPlugin::removeFromSession(PeerPlugin* peerPlugin) {
 protocol_session::RemovedConnectionCallbackHandler<libtorrent::peer_id> TorrentPlugin::removeConnection() {
 
     return [this](const libtorrent::peer_id & peerId, protocol_session::DisconnectCause cause) {
-        // remove call for peerId from _outstandingFullPieceArrivedCalls
-        typedef std::map<int, libtorrent::peer_id> OutstandingFullPieceArrivedCallsMap;
-
-        auto call = std::find_if(
-            std::begin(_outstandingFullPieceArrivedCalls),
-            std::end(_outstandingFullPieceArrivedCalls),
-            boost::bind(&OutstandingFullPieceArrivedCallsMap::value_type::second, _1) == peerId
-        );
-
-        if(call != std::end(_outstandingFullPieceArrivedCalls))
-          _outstandingFullPieceArrivedCalls.erase(call);
-
         // remove call for peer_id from _outstandingLoadPieceForBuyerCalls
         for(auto mapping : _outstandingLoadPieceForBuyerCalls) {
             auto calls = mapping.second;
@@ -735,14 +666,24 @@ protocol_session::RemovedConnectionCallbackHandler<libtorrent::peer_id> TorrentP
 
 protocol_session::FullPieceArrived<libtorrent::peer_id> TorrentPlugin::fullPieceArrived() {
 
-    return [this](const libtorrent::peer_id & peerId, const protocol_wire::PieceData & pieceData, int index) -> void {
+    return [this](const libtorrent::peer_id & peerId, const protocol_wire::PieceData & pieceData, int index) -> bool {
+        auto peerPlugin = peer(peerId);
+        auto endPoint = peerPlugin->endPoint();
+
+        const auto ti = torrent()->torrent_file();
+
+        // test if piece data is valid
+        const libtorrent::sha1_hash expected = ti.hash_for_piece(index);
+        const libtorrent::sha1_hash computed = libtorrent::hasher(pieceData.piece().get(), pieceData.length()).final();
+
+        if (computed != expected) {
+          _alertManager->emplace_alert<alert::InvalidPieceArrived>(_torrent, endPoint, peerId, index);
+          return false;
+        }
+
         if (!torrent()->have_piece(index)) {
-          // Make sure no outstanding calls exist for this index
-          assert(!_outstandingFullPieceArrivedCalls.count(index));
 
-          _outstandingFullPieceArrivedCalls[index] = peerId;
-
-          // Tell libtorrent to validate piece
+          // Tell libtorrent to add and validate piece
           // last argument is a flag which presently seems to only test
           // flags & torrent::overwrite_existing, which seems to be whether
           // the piece should be overwritten if it is already present
@@ -753,10 +694,11 @@ protocol_session::FullPieceArrived<libtorrent::peer_id> TorrentPlugin::fullPiece
           torrent()->add_piece(index, pieceData.piece().get(), 0);
         } else {
           // We already received the piece from another peer (most likely a non joystream peer)
-          // For now we ignore the validity of the piece data
-          // tell session about endpoint and piece
-          _session.validPieceReceivedOnConnection(peerId, index);
         }
+
+        _alertManager->emplace_alert<alert::ValidPieceArrived>(_torrent, endPoint, peerId, index);
+
+        return true;
     };
 }
 
