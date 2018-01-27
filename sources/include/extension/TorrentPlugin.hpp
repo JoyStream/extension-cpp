@@ -298,16 +298,11 @@ private:
 
     /// Sell mode spesific state
 
-    // While selling, this maintains mapping between piece index and peers that are
-    // waiting for this piece to be read from disk.
-    // Will typically just be one, but may be multiple - hence set is used
-    std::map<int, std::set<libtorrent::peer_id> > _outstandingLoadPieceForBuyerCalls;
+    // While selling, this maintains set of pieces peers are waiting for to be read from disk.
+    std::set<int> _outstandingLoadPieceForBuyers;
 
     /// Buy mode spesific state
 
-    // While buying, this maintains mapping between piece index and the single
-    // peer waiting for it to be validated and stored.
-    std::map<int, libtorrent::peer_id> _outstandingFullPieceArrivedCalls;
 
     /// Utilities
 

@@ -231,40 +231,31 @@ void TorrentPlugin::on_add_peer(const libtorrent::tcp::endpoint & endPoint, int 
 
 void TorrentPlugin::pieceRead(const libtorrent::read_piece_alert * alert) {
 
-    // There should be at least one peer registered for this piece, unless they have disconnected
-    auto it = _outstandingLoadPieceForBuyerCalls.find(alert->piece);
+    // There should be a registeration for this piece, unless we have left selling mode
+    auto it = _outstandingLoadPieceForBuyers.find(alert->piece);
 
-    if(it == _outstandingLoadPieceForBuyerCalls.cend()) {
+    if(it == _outstandingLoadPieceForBuyers.cend()) {
 
         std::clog << "Ignoring piece read, must be for some other purpose." << std::endl;
         return;
     }
 
-    // Make a callback for each peer registered
-    const std::set<libtorrent::peer_id> & peers = it->second;
+    // Remove registeration
+    _outstandingLoadPieceForBuyers.erase(it);
 
-    // Iterate peers
-    for(auto peerId : peers) {
-        auto peerPlugin = peer(peerId);
-        auto endPoint = peerPlugin->endPoint();
+    // Make sure reading worked
+    if(alert->ec) {
 
-        // Make sure reading worked
-        if(alert->ec) {
+        std::clog << "Failed reading piece" << alert->piece << std::endl;
+        assert(false);
 
-            std::clog << "Failed reading piece" << alert->piece << "for" << libtorrent::print_address(endPoint.address()).c_str() << std::endl;
-            assert(false);
+    } else {
 
-        } else {
+        std::clog << "Read piece" << alert->piece << std::endl;
 
-            std::clog << "Read piece" << alert->piece << "for" << libtorrent::print_address(endPoint.address()).c_str() << std::endl;
-
-            // tell session
-            _session.pieceLoaded(peerId, protocol_wire::PieceData(alert->buffer, alert->size), alert->piece);
-        }
+        // tell session
+        _session.pieceLoaded(protocol_wire::PieceData(alert->buffer, alert->size), alert->piece);
     }
-
-    // Remove all peers registered for this piece
-    _outstandingLoadPieceForBuyerCalls.erase(it);
 }
 
 void TorrentPlugin::start() {
@@ -359,7 +350,7 @@ void TorrentPlugin::toObserveMode() {
     // Clear relevant mappings
     // NB: We are doing clearing regardless of whether operation is successful!
     if(_session.mode() == protocol_session::SessionMode::selling)
-        _outstandingLoadPieceForBuyerCalls.clear();
+        _outstandingLoadPieceForBuyers.clear();
 
     _session.toObserveMode(removeConnection());
 
@@ -370,7 +361,7 @@ void TorrentPlugin::toObserveMode() {
 void TorrentPlugin::toSellMode(const protocol_wire::SellerTerms & terms) {
 
     // Should have been cleared before
-    assert(_outstandingLoadPieceForBuyerCalls.empty());
+    assert(_outstandingLoadPieceForBuyers.empty());
 
     if(_torrent.status().state != libtorrent::torrent_status::state_t::seeding) {
         throw exception::InvalidModeTransition();
@@ -399,7 +390,7 @@ void TorrentPlugin::toBuyMode(const protocol_wire::BuyerTerms & terms) {
     // Clear relevant mappings
     // NB: We are doing clearing regardless of whether operation is successful!
     if(_session.mode() == protocol_session::SessionMode::selling)
-        _outstandingLoadPieceForBuyerCalls.clear();
+        _outstandingLoadPieceForBuyers.clear();
 
     if(_torrent.status().state != libtorrent::torrent_status::state_t::downloading) {
         throw exception::InvalidModeTransition();
@@ -629,16 +620,6 @@ void TorrentPlugin::removeFromSession(PeerPlugin* peerPlugin) {
 protocol_session::RemovedConnectionCallbackHandler<libtorrent::peer_id> TorrentPlugin::removeConnection() {
 
     return [this](const libtorrent::peer_id & peerId, protocol_session::DisconnectCause cause) {
-        // remove call for peer_id from _outstandingLoadPieceForBuyerCalls
-        for(auto mapping : _outstandingLoadPieceForBuyerCalls) {
-            auto calls = mapping.second;
-
-            auto call = calls.find(peerId);
-
-            if(call != calls.end())
-              calls.erase(call);
-        }
-
         // Send notification
         auto peerPlugin = peer(peerId);
         auto endPoint = peerPlugin->endPoint();
@@ -702,46 +683,40 @@ protocol_session::FullPieceArrived<libtorrent::peer_id> TorrentPlugin::fullPiece
     };
 }
 
+///
 protocol_session::LoadPieceForBuyer<libtorrent::peer_id> TorrentPlugin::loadPieceForBuyer() {
 
     return [this](const libtorrent::peer_id & peerId, int index) -> void {
+        // See if we have previous calls for this piece
+        auto it = this->_outstandingLoadPieceForBuyers.find(index);
 
-        // Get reference to, possibly new - and hence empty, set of calls for given piece index
-        std::set<libtorrent::peer_id> & callSet = this->_outstandingLoadPieceForBuyerCalls[index];
-
-        // Was there no previous calls for this piece?
-        const bool noPreviousCalls = callSet.empty();
-
-        // Remember to notify this endpoint when piece is loaded
-        // NB it is important the callSet be updated before call to read_piece below as a piece could be read in the
-        // same call triggering re-entry into hanlding read_piece_alert which checks this set then erases it
-        callSet.insert(peerId);
+        bool noPreviousCall = it == this->_outstandingLoadPieceForBuyers.end();
 
         auto endPoint = peer(peerId)->endPoint();
 
-        if(noPreviousCalls) {
-            std::clog << "Requested piece "
-                      << index
-                      << " by"
-                      << libtorrent::print_address(endPoint.address()).c_str()
-                      << std::endl;
+        if(noPreviousCall) {
+          // Remember to notify session when piece is loaded
+          // NB it is important the set be updated before call to read_piece below as a piece could be read in the
+          // same call triggering re-entry into hanlding read_piece_alert which checks this set
+          this->_outstandingLoadPieceForBuyers.insert(index);
 
-            // Make first call
-            torrent()->read_piece(index);
+          std::clog << "Requested piece "
+                    << index
+                    << " by"
+                    << libtorrent::print_address(endPoint.address()).c_str()
+                    << std::endl;
+
+          // Make first call
+          torrent()->read_piece(index);
 
         } else {
-
-            // otherwise we dont need to make a new call, a response will come from libtorrent
-            std::clog << "["
-                      << _outstandingLoadPieceForBuyerCalls[index].size()
-                      << "] Skipping reading requeted piece "
+            // We dont need to make a new call, a response will come from libtorrent
+            std::clog << "Skipping reading of requested piece "
                       << index
                       << " by"
                       << libtorrent::print_address(endPoint.address()).c_str()
                       << std::endl;
-
         }
-
     };
 }
 
