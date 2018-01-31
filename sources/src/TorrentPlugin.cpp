@@ -9,12 +9,15 @@
 #include <extension/Plugin.hpp>
 #include <extension/Request.hpp>
 #include <extension/Exception.hpp>
+#include <extension/Common.hpp>
 #include <libtorrent/alert_manager.hpp>
 #include <libtorrent/error_code.hpp>
 #include <libtorrent/peer_connection_handle.hpp>
 #include <libtorrent/bt_peer_connection.hpp>
 #include <libtorrent/socket_io.hpp> // print_endpoint
 #include <libtorrent/hasher.hpp>
+
+#include <algorithm> // std::max
 
 namespace joystream {
 
@@ -47,7 +50,8 @@ TorrentPlugin::TorrentPlugin(Plugin * plugin,
     , _alertManager(alertManager)
     , _policy(policy)
     , _libtorrentInteraction(libtorrentInteraction)
-    , _infoHash(torrent.info_hash()) {
+    , _infoHash(torrent.info_hash())
+    , _maxTimeToServicePiece(std::chrono::duration<double>::zero()) {
 }
 
 TorrentPlugin::~TorrentPlugin() {
@@ -176,8 +180,15 @@ void TorrentPlugin::on_piece_failed(int index) {
 void TorrentPlugin::tick() {
 
     // Asynch processing in session if its setup
-    if(_session.mode() != protocol_session::SessionMode::not_set)
+    if(_session.mode() != protocol_session::SessionMode::not_set) {
         _session.tick();
+    }
+
+    if(_session.mode() == protocol_session::SessionMode::buying &&
+       _maxTimeToServicePiece != std::chrono::duration<double>::zero()) {
+
+        _session.disconnectSlowSellers(_maxTimeToServicePiece);
+    }
 }
 
 bool TorrentPlugin::on_resume() {
@@ -402,6 +413,13 @@ void TorrentPlugin::toBuyMode(const protocol_wire::BuyerTerms & terms) {
                        terms,
                        torrentPieceInformation(),
                        allSellersGone());
+
+    // Set maxium time to service a piece based on its size, using a target download rate
+    // Assuming uniform piece size across torrent
+    const double pieceSize = torrent()->torrent_file().piece_length(); // Bytes
+    const double targetRate = 10000; // Bytes/s
+    const double minTimeout = 3; // lower bound
+    _maxTimeToServicePiece = calculatePieceTimeout(pieceSize, targetRate, minTimeout);
 
     // Send notification
     _alertManager->emplace_alert<alert::SessionToBuyMode>(_torrent, terms);

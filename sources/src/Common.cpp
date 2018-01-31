@@ -24,3 +24,18 @@ size_t hash<libtorrent::peer_id>::operator()(const libtorrent::peer_id & peerId)
 }
 
 }
+
+namespace joystream {
+namespace extension {
+
+  std::chrono::duration<double>
+  calculatePieceTimeout(const double & pieceLengthBytes,
+                        const double & targetRateBytesPerSecond,
+                        const double & minTimeoutSeconds) {
+
+    double targetTimeout = std::ceil(pieceLengthBytes / targetRateBytesPerSecond);
+    int timeout = std::max<double>(targetTimeout, minTimeoutSeconds);
+    return std::chrono::seconds(timeout);
+  }
+}
+}

@@ -11,6 +11,7 @@
 #include <libtorrent/socket_io.hpp>
 #include <libtorrent/peer_id.hpp>
 #include <functional>
+#include <chrono>
 
 namespace std
 {
@@ -27,4 +28,14 @@ struct hash<libtorrent::peer_id> {
 };
 }
 
+namespace joystream {
+namespace extension {
+
+std::chrono::duration<double>
+calculatePieceTimeout(const double & pieceLengthBytes,
+                      const double & targetRateBytesPerSecond,
+                      const double & minTimeoutSeconds);
+
+}
+}
 #endif // JOYSTREAM_EXTENSION_COMMON_HPP
