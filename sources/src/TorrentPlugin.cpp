@@ -650,9 +650,12 @@ protocol_session::RemovedConnectionCallbackHandler<libtorrent::peer_id> TorrentP
         if(cause == protocol_session::DisconnectCause::client)
             return;
         else {
-          std::clog << "Adding peer to misbehavedPeers list: " << endPoint << " cause: " << (int)cause << std::endl;
-          // all other reasons are considered misbehaviour
-          _misbehavedPeers.insert(endPoint);
+          // Add peer to banlist unless it was just due to timeout
+          if (cause != protocol_session::DisconnectCause::seller_servicing_piece_has_timed_out) {
+              std::clog << "Adding peer to misbehavedPeers list: " << endPoint << " cause: " << (int)cause << std::endl;
+              // all other reasons are considered misbehaviour
+              _misbehavedPeers.insert(endPoint);
+          }
         }
 
         // *** Record cause for some purpose? ***
