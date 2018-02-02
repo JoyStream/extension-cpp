@@ -9,11 +9,15 @@
 #include <extension/Plugin.hpp>
 #include <extension/Request.hpp>
 #include <extension/Exception.hpp>
+#include <extension/Common.hpp>
 #include <libtorrent/alert_manager.hpp>
 #include <libtorrent/error_code.hpp>
 #include <libtorrent/peer_connection_handle.hpp>
 #include <libtorrent/bt_peer_connection.hpp>
 #include <libtorrent/socket_io.hpp> // print_endpoint
+#include <libtorrent/hasher.hpp>
+
+#include <algorithm> // std::max
 
 namespace joystream {
 
@@ -33,6 +37,16 @@ namespace protocol_session {
 }
 
 namespace extension {
+
+std::chrono::duration<double>
+calculatePieceTimeout(const double & pieceLengthBytes,
+                      const double & targetRateBytesPerSecond,
+                      const double & minTimeoutSeconds) {
+
+  double targetTimeout = std::ceil(pieceLengthBytes / targetRateBytesPerSecond);
+  int timeout = std::max<double>(targetTimeout, minTimeoutSeconds);
+  return std::chrono::seconds(timeout);
+}
 
 TorrentPlugin::TorrentPlugin(Plugin * plugin,
                              const libtorrent::torrent_handle & torrent,
@@ -164,67 +178,20 @@ void TorrentPlugin::on_piece_pass(int index) {
 
     // Make sure we are in correct mode, as mode changed may have occured
     if(_session.mode() == protocol_session::SessionMode::buying) {
-
-        auto it = _outstandingFullPieceArrivedCalls.find(index);
-
-        // If this validation is not due to us
-        if(it == _outstandingFullPieceArrivedCalls.cend()) {
-
-            // then just tell session about it
-            _session.pieceDownloaded(index);
-
-        } else {
-            auto peerId = it->second;
-            auto peerPlugin = peer(peerId);
-            auto endPoint = peerPlugin->endPoint();
-
-            _alertManager->emplace_alert<alert::ValidPieceArrived>(_torrent, endPoint, peerId, index);
-
-            // if its due to us, then tell session about endpoint and piece
-            _session.validPieceReceivedOnConnection(peerId, index);
-
-            // and remove call
-            _outstandingFullPieceArrivedCalls.erase(it);
-        }
+        _session.pieceDownloaded(index);
     }
 }
 
 void TorrentPlugin::on_piece_failed(int index) {
 
-    // Make sure we are in correct mode, as mode changed may have occured
-    if(_session.mode() == protocol_session::SessionMode::buying) {
-
-        auto it = _outstandingFullPieceArrivedCalls.find(index);
-
-        // If this validation is not due to us
-        if(it == _outstandingFullPieceArrivedCalls.cend()) {
-
-            // then there is nothing to do
-
-        } else {
-
-            // if its due to us, then
-
-            auto peerId = it->second;
-            auto peerPlugin = peer(peerId);
-            auto endPoint = peerPlugin->endPoint();
-
-            _alertManager->emplace_alert<alert::InvalidPieceArrived>(_torrent, endPoint, peerId, index);
-
-            // tell session about endpoint and piece
-            _session.invalidPieceReceivedOnConnection(peerId, index);
-
-            // and remove call
-            _outstandingFullPieceArrivedCalls.erase(it);
-        }
-    }
 }
 
 void TorrentPlugin::tick() {
 
     // Asynch processing in session if its setup
-    if(_session.mode() != protocol_session::SessionMode::not_set)
+    if(_session.mode() != protocol_session::SessionMode::not_set) {
         _session.tick();
+    }
 }
 
 bool TorrentPlugin::on_resume() {
@@ -241,7 +208,7 @@ void TorrentPlugin::on_files_checked() {
     // nothing to do
 }
 
-void TorrentPlugin::on_state(int) {
+void TorrentPlugin::on_state(int state) {
     // nothing to do
 }
 
@@ -278,40 +245,31 @@ void TorrentPlugin::on_add_peer(const libtorrent::tcp::endpoint & endPoint, int 
 
 void TorrentPlugin::pieceRead(const libtorrent::read_piece_alert * alert) {
 
-    // There should be at least one peer registered for this piece, unless they have disconnected
-    auto it = _outstandingLoadPieceForBuyerCalls.find(alert->piece);
+    // There should be a registeration for this piece, unless we have left selling mode
+    auto it = _outstandingLoadPieceForBuyers.find(alert->piece);
 
-    if(it == _outstandingLoadPieceForBuyerCalls.cend()) {
+    if(it == _outstandingLoadPieceForBuyers.cend()) {
 
         std::clog << "Ignoring piece read, must be for some other purpose." << std::endl;
         return;
     }
 
-    // Make a callback for each peer registered
-    const std::set<libtorrent::peer_id> & peers = it->second;
+    // Remove registeration
+    _outstandingLoadPieceForBuyers.erase(it);
 
-    // Iterate peers
-    for(auto peerId : peers) {
-        auto peerPlugin = peer(peerId);
-        auto endPoint = peerPlugin->endPoint();
+    // Make sure reading worked
+    if(alert->ec) {
 
-        // Make sure reading worked
-        if(alert->ec) {
+        std::clog << "Failed reading piece" << alert->piece << std::endl;
+        assert(false);
 
-            std::clog << "Failed reading piece" << alert->piece << "for" << libtorrent::print_address(endPoint.address()).c_str() << std::endl;
-            assert(false);
+    } else {
 
-        } else {
+        std::clog << "Read piece" << alert->piece << std::endl;
 
-            std::clog << "Read piece" << alert->piece << "for" << libtorrent::print_address(endPoint.address()).c_str() << std::endl;
-
-            // tell session
-            _session.pieceLoaded(peerId, protocol_wire::PieceData(alert->buffer, alert->size), alert->piece);
-        }
+        // tell session
+        _session.pieceLoaded(protocol_wire::PieceData(alert->buffer, alert->size), alert->piece);
     }
-
-    // Remove all peers registered for this piece
-    _outstandingLoadPieceForBuyerCalls.erase(it);
 }
 
 void TorrentPlugin::start() {
@@ -406,9 +364,7 @@ void TorrentPlugin::toObserveMode() {
     // Clear relevant mappings
     // NB: We are doing clearing regardless of whether operation is successful!
     if(_session.mode() == protocol_session::SessionMode::selling)
-        _outstandingLoadPieceForBuyerCalls.clear();
-    else if(_session.mode() == protocol_session::SessionMode::buying)
-        _outstandingFullPieceArrivedCalls.clear();
+        _outstandingLoadPieceForBuyers.clear();
 
     _session.toObserveMode(removeConnection());
 
@@ -419,12 +375,7 @@ void TorrentPlugin::toObserveMode() {
 void TorrentPlugin::toSellMode(const protocol_wire::SellerTerms & terms) {
 
     // Should have been cleared before
-    assert(_outstandingLoadPieceForBuyerCalls.empty());
-
-    // Clear relevant mappings
-    // NB: We are doing clearing regardless of whether operation is successful!
-    if(_session.mode() == protocol_session::SessionMode::buying)
-        _outstandingFullPieceArrivedCalls.clear();
+    assert(_outstandingLoadPieceForBuyers.empty());
 
     if(_torrent.status().state != libtorrent::torrent_status::state_t::seeding) {
         throw exception::InvalidModeTransition();
@@ -450,23 +401,30 @@ void TorrentPlugin::toSellMode(const protocol_wire::SellerTerms & terms) {
 
 void TorrentPlugin::toBuyMode(const protocol_wire::BuyerTerms & terms) {
 
-    // Should have been cleared before
-    assert(_outstandingFullPieceArrivedCalls.empty());
-
     // Clear relevant mappings
     // NB: We are doing clearing regardless of whether operation is successful!
     if(_session.mode() == protocol_session::SessionMode::selling)
-        _outstandingLoadPieceForBuyerCalls.clear();
+        _outstandingLoadPieceForBuyers.clear();
 
     if(_torrent.status().state != libtorrent::torrent_status::state_t::downloading) {
         throw exception::InvalidModeTransition();
     }
 
+    // An upper bound on the amount of time to allow a seller to service one piece request before we
+    // the session should disconnect them.
+    // Set maxium time to service a piece based on its size, using a target download rate
+    // Assuming uniform piece size across torrent
+    const double pieceSize = torrent()->torrent_file().piece_length(); // Bytes
+    const double targetRate = 10000; // Bytes/s
+    const double minTimeout = 3; // lower bound
+
     _session.toBuyMode(removeConnection(),
                        fullPieceArrived(),
                        sentPayment(),
                        terms,
-                       torrentPieceInformation());
+                       torrentPieceInformation(),
+                       allSellersGone(),
+                       calculatePieceTimeout(pieceSize, targetRate, minTimeout));
 
     // Send notification
     _alertManager->emplace_alert<alert::SessionToBuyMode>(_torrent, terms);
@@ -685,28 +643,6 @@ void TorrentPlugin::removeFromSession(PeerPlugin* peerPlugin) {
 protocol_session::RemovedConnectionCallbackHandler<libtorrent::peer_id> TorrentPlugin::removeConnection() {
 
     return [this](const libtorrent::peer_id & peerId, protocol_session::DisconnectCause cause) {
-        // remove call for peerId from _outstandingFullPieceArrivedCalls
-        typedef std::map<int, libtorrent::peer_id> OutstandingFullPieceArrivedCallsMap;
-
-        auto call = std::find_if(
-            std::begin(_outstandingFullPieceArrivedCalls),
-            std::end(_outstandingFullPieceArrivedCalls),
-            boost::bind(&OutstandingFullPieceArrivedCallsMap::value_type::second, _1) == peerId
-        );
-
-        if(call != std::end(_outstandingFullPieceArrivedCalls))
-          _outstandingFullPieceArrivedCalls.erase(call);
-
-        // remove call for peer_id from _outstandingLoadPieceForBuyerCalls
-        for(auto mapping : _outstandingLoadPieceForBuyerCalls) {
-            auto calls = mapping.second;
-
-            auto call = calls.find(peerId);
-
-            if(call != calls.end())
-              calls.erase(call);
-        }
-
         // Send notification
         auto peerPlugin = peer(peerId);
         auto endPoint = peerPlugin->endPoint();
@@ -719,9 +655,12 @@ protocol_session::RemovedConnectionCallbackHandler<libtorrent::peer_id> TorrentP
         if(cause == protocol_session::DisconnectCause::client)
             return;
         else {
-          std::clog << "Adding peer to misbehavedPeers list: " << endPoint << " cause: " << (int)cause << std::endl;
-          // all other reasons are considered misbehaviour
-          _misbehavedPeers.insert(endPoint);
+          // Add peer to banlist unless it was just due to timeout
+          if (cause != protocol_session::DisconnectCause::seller_servicing_piece_has_timed_out) {
+              std::clog << "Adding peer to misbehavedPeers list: " << endPoint << " cause: " << (int)cause << std::endl;
+              // all other reasons are considered misbehaviour
+              _misbehavedPeers.insert(endPoint);
+          }
         }
 
         // *** Record cause for some purpose? ***
@@ -734,66 +673,76 @@ protocol_session::RemovedConnectionCallbackHandler<libtorrent::peer_id> TorrentP
 
 protocol_session::FullPieceArrived<libtorrent::peer_id> TorrentPlugin::fullPieceArrived() {
 
-    return [this](const libtorrent::peer_id & peerId, const protocol_wire::PieceData & pieceData, int index) -> void {
+    return [this](const libtorrent::peer_id & peerId, const protocol_wire::PieceData & pieceData, int index) -> bool {
+        auto peerPlugin = peer(peerId);
+        auto endPoint = peerPlugin->endPoint();
 
-        // Make sure no outstanding calls exist for this index
-        assert(!_outstandingFullPieceArrivedCalls.count(index));
+        const auto ti = torrent()->torrent_file();
 
-        _outstandingFullPieceArrivedCalls[index] = peerId;
+        // test if piece data is valid
+        const libtorrent::sha1_hash expected = ti.hash_for_piece(index);
+        const libtorrent::sha1_hash computed = libtorrent::hasher(pieceData.piece().get(), pieceData.length()).final();
 
-        // Tell libtorrent to validate piece
-        // last argument is a flag which presently seems to only test
-        // flags & torrent::overwrite_existing, which seems to be whether
-        // the piece should be overwritten if it is already present
-        //
-        // libtorrent::torrent_plugin::on_piece_pass()
-        // libtorrent::torrent_plugin::on_piece_failed()
-        // processes result of checking
+        if (computed != expected) {
+          _alertManager->emplace_alert<alert::InvalidPieceArrived>(_torrent, endPoint, peerId, index);
+          return false;
+        }
 
-        torrent()->add_piece(index, pieceData.piece().get(), 0);
+        if (!torrent()->have_piece(index)) {
+
+          // Tell libtorrent to add and validate piece
+          // last argument is a flag which presently seems to only test
+          // flags & torrent::overwrite_existing, which seems to be whether
+          // the piece should be overwritten if it is already present
+          //
+          // libtorrent::torrent_plugin::on_piece_pass()
+          // libtorrent::torrent_plugin::on_piece_failed()
+          // processes result of checking
+          torrent()->add_piece(index, pieceData.piece().get(), 0);
+        } else {
+          // We already received the piece from another peer (most likely a non joystream peer)
+        }
+
+        _alertManager->emplace_alert<alert::ValidPieceArrived>(_torrent, endPoint, peerId, index);
+
+        return true;
     };
 }
 
+///
 protocol_session::LoadPieceForBuyer<libtorrent::peer_id> TorrentPlugin::loadPieceForBuyer() {
 
     return [this](const libtorrent::peer_id & peerId, int index) -> void {
+        // See if we have previous calls for this piece
+        auto it = this->_outstandingLoadPieceForBuyers.find(index);
 
-        // Get reference to, possibly new - and hence empty, set of calls for given piece index
-        std::set<libtorrent::peer_id> & callSet = this->_outstandingLoadPieceForBuyerCalls[index];
-
-        // Was there no previous calls for this piece?
-        const bool noPreviousCalls = callSet.empty();
-
-        // Remember to notify this endpoint when piece is loaded
-        // NB it is important the callSet be updated before call to read_piece below as a piece could be read in the
-        // same call triggering re-entry into hanlding read_piece_alert which checks this set then erases it
-        callSet.insert(peerId);
+        bool noPreviousCall = it == this->_outstandingLoadPieceForBuyers.end();
 
         auto endPoint = peer(peerId)->endPoint();
 
-        if(noPreviousCalls) {
-            std::clog << "Requested piece "
-                      << index
-                      << " by"
-                      << libtorrent::print_address(endPoint.address()).c_str()
-                      << std::endl;
+        if(noPreviousCall) {
+          // Remember to notify session when piece is loaded
+          // NB it is important the set be updated before call to read_piece below as a piece could be read in the
+          // same call triggering re-entry into hanlding read_piece_alert which checks this set
+          this->_outstandingLoadPieceForBuyers.insert(index);
 
-            // Make first call
-            torrent()->read_piece(index);
+          std::clog << "Requested piece "
+                    << index
+                    << " by"
+                    << libtorrent::print_address(endPoint.address()).c_str()
+                    << std::endl;
+
+          // Make first call
+          torrent()->read_piece(index);
 
         } else {
-
-            // otherwise we dont need to make a new call, a response will come from libtorrent
-            std::clog << "["
-                      << _outstandingLoadPieceForBuyerCalls[index].size()
-                      << "] Skipping reading requeted piece "
+            // We dont need to make a new call, a response will come from libtorrent
+            std::clog << "Skipping reading of requested piece "
                       << index
                       << " by"
                       << libtorrent::print_address(endPoint.address()).c_str()
                       << std::endl;
-
         }
-
     };
 }
 
@@ -856,6 +805,17 @@ protocol_session::SentPayment<libtorrent::peer_id> TorrentPlugin::sentPayment() 
         manager.emplace_alert<alert::SentPayment>(h, endPoint, peerId, paymentIncrement, totalNumberOfPayments, totalAmountPaid, pieceIndex);
     };
 
+}
+
+protocol_session::AllSellersGone TorrentPlugin::allSellersGone() {
+  // Get alert manager and handle for torrent
+  libtorrent::torrent * t = torrent();
+  libtorrent::alert_manager & manager = t->alerts();
+  libtorrent::torrent_handle h = t->get_handle();
+
+  return [&manager, h, this](void) -> void {
+    manager.emplace_alert<alert::AllSellersGone>(h);
+  };
 }
 
 int TorrentPlugin::pickNextPiece(const std::vector<protocol_session::detail::Piece<libtorrent::peer_id>> * pieces) {
