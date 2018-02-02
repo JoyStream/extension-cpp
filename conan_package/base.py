@@ -10,7 +10,7 @@ class ExtensionBase(ConanFile):
     repo_https_url = "https://github.com/JoyStream/extension-cpp.git"
     settings = "os", "compiler", "build_type", "arch"
     generators = "cmake"
-    requires = "ProtocolSession/0.2.0@joystream/stable", "Libtorrent/1.1.1@joystream/stable", "Common/0.1.3@joystream/stable"
+    requires = "ProtocolSession/0.2.1@joystream/stable", "Libtorrent/1.1.1@joystream/stable", "Common/0.1.3@joystream/stable"
     build_policy = "missing"
 
     def source(self):

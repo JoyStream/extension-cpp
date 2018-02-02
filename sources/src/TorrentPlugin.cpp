@@ -38,6 +38,16 @@ namespace protocol_session {
 
 namespace extension {
 
+std::chrono::duration<double>
+calculatePieceTimeout(const double & pieceLengthBytes,
+                      const double & targetRateBytesPerSecond,
+                      const double & minTimeoutSeconds) {
+
+  double targetTimeout = std::ceil(pieceLengthBytes / targetRateBytesPerSecond);
+  int timeout = std::max<double>(targetTimeout, minTimeoutSeconds);
+  return std::chrono::seconds(timeout);
+}
+
 TorrentPlugin::TorrentPlugin(Plugin * plugin,
                              const libtorrent::torrent_handle & torrent,
                              uint minimumMessageId,
@@ -183,12 +193,6 @@ void TorrentPlugin::tick() {
     if(_session.mode() != protocol_session::SessionMode::not_set) {
         _session.tick();
     }
-
-    if(_session.mode() == protocol_session::SessionMode::buying &&
-       _maxTimeToServicePiece != std::chrono::duration<double>::zero()) {
-
-        _session.disconnectSlowSellers(_maxTimeToServicePiece);
-    }
 }
 
 bool TorrentPlugin::on_resume() {
@@ -205,8 +209,18 @@ void TorrentPlugin::on_files_checked() {
     // nothing to do
 }
 
-void TorrentPlugin::on_state(int) {
-    // nothing to do
+void TorrentPlugin::on_state(int state) {
+
+  // When the torrent goes into downloading state we calculate the default maximum time to service
+  // a piece, which is given to the buying session to know when to timeout sellers.
+  if (state == libtorrent::torrent_status::state_t::downloading) {
+    // Set maxium time to service a piece based on its size, using a target download rate
+    // Assuming uniform piece size across torrent
+    const double pieceSize = torrent()->torrent_file().piece_length(); // Bytes
+    const double targetRate = 10000; // Bytes/s
+    const double minTimeout = 3; // lower bound
+    _maxTimeToServicePiece = calculatePieceTimeout(pieceSize, targetRate, minTimeout);
+  }
 }
 
 void TorrentPlugin::on_add_peer(const libtorrent::tcp::endpoint & endPoint, int /*src*/, int /*flags*/) {
@@ -412,14 +426,8 @@ void TorrentPlugin::toBuyMode(const protocol_wire::BuyerTerms & terms) {
                        sentPayment(),
                        terms,
                        torrentPieceInformation(),
-                       allSellersGone());
-
-    // Set maxium time to service a piece based on its size, using a target download rate
-    // Assuming uniform piece size across torrent
-    const double pieceSize = torrent()->torrent_file().piece_length(); // Bytes
-    const double targetRate = 10000; // Bytes/s
-    const double minTimeout = 3; // lower bound
-    _maxTimeToServicePiece = calculatePieceTimeout(pieceSize, targetRate, minTimeout);
+                       allSellersGone(),
+                       _maxTimeToServicePiece);
 
     // Send notification
     _alertManager->emplace_alert<alert::SessionToBuyMode>(_torrent, terms);
