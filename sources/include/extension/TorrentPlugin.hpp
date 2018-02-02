@@ -250,11 +250,6 @@ private:
     // a) PeerPlugin::on_extension_handshake: sent extended message, despite claiming not to support BEP10
     std::set<libtorrent::tcp::endpoint> _misbehavedPeers;
 
-    // An upper bound on the amount of time to allow a seller to service one piece request before we
-    // ask the session to disconnect them. This is set to a reasonable low value based on
-    // size of the torrent piece when we go to buy mode. value of zero means sellers will not be timed out.
-    std::chrono::duration<double> _maxTimeToServicePiece;
-
     // Torrent info hash
     const libtorrent::sha1_hash _infoHash;
 

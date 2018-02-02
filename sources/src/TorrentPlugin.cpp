@@ -60,8 +60,7 @@ TorrentPlugin::TorrentPlugin(Plugin * plugin,
     , _alertManager(alertManager)
     , _policy(policy)
     , _libtorrentInteraction(libtorrentInteraction)
-    , _infoHash(torrent.info_hash())
-    , _maxTimeToServicePiece(std::chrono::duration<double>::zero()) {
+    , _infoHash(torrent.info_hash()) {
 }
 
 TorrentPlugin::~TorrentPlugin() {
@@ -210,17 +209,7 @@ void TorrentPlugin::on_files_checked() {
 }
 
 void TorrentPlugin::on_state(int state) {
-
-  // When the torrent goes into downloading state we calculate the default maximum time to service
-  // a piece, which is given to the buying session to know when to timeout sellers.
-  if (state == libtorrent::torrent_status::state_t::downloading) {
-    // Set maxium time to service a piece based on its size, using a target download rate
-    // Assuming uniform piece size across torrent
-    const double pieceSize = torrent()->torrent_file().piece_length(); // Bytes
-    const double targetRate = 10000; // Bytes/s
-    const double minTimeout = 3; // lower bound
-    _maxTimeToServicePiece = calculatePieceTimeout(pieceSize, targetRate, minTimeout);
-  }
+    // nothing to do
 }
 
 void TorrentPlugin::on_add_peer(const libtorrent::tcp::endpoint & endPoint, int /*src*/, int /*flags*/) {
@@ -421,13 +410,21 @@ void TorrentPlugin::toBuyMode(const protocol_wire::BuyerTerms & terms) {
         throw exception::InvalidModeTransition();
     }
 
+    // An upper bound on the amount of time to allow a seller to service one piece request before we
+    // the session should disconnect them.
+    // Set maxium time to service a piece based on its size, using a target download rate
+    // Assuming uniform piece size across torrent
+    const double pieceSize = torrent()->torrent_file().piece_length(); // Bytes
+    const double targetRate = 10000; // Bytes/s
+    const double minTimeout = 3; // lower bound
+
     _session.toBuyMode(removeConnection(),
                        fullPieceArrived(),
                        sentPayment(),
                        terms,
                        torrentPieceInformation(),
                        allSellersGone(),
-                       _maxTimeToServicePiece);
+                       calculatePieceTimeout(pieceSize, targetRate, minTimeout));
 
     // Send notification
     _alertManager->emplace_alert<alert::SessionToBuyMode>(_torrent, terms);
