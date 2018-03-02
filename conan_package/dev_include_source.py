@@ -11,6 +11,8 @@ class ExtensionRelease(ExtensionBase):
 
     exports_sources = "../sources*"
 
+    build_policy="always"
+
     def source(self):
         os.mkdir("repo")
         shutil.move("sources", "repo/")

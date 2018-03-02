@@ -35,6 +35,7 @@ class Plugin : public libtorrent::plugin {
 public:
 
     Plugin(uint minimumMessageId,
+           Coin::Network network,
            libtorrent::alert_manager * alertManager = nullptr,
            libtorrent::aux::session_impl * session = nullptr);
 
@@ -59,6 +60,8 @@ public:
 
     // Get map of weak torrent plugin references
     const std::map<libtorrent::sha1_hash, boost::weak_ptr<TorrentPlugin> > & torrentPlugins() const noexcept;
+
+    Coin::Network network() const;
 
 private:
 
@@ -89,6 +92,8 @@ private:
     // Process all requests in queue until empty.
     // Access to queue synchronized with ::submit()
     void processesRequestQueue();
+
+    const Coin::Network _network;
 };
 
 // These routines are templated, and therefore inlined
