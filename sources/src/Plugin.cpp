@@ -18,11 +18,13 @@ namespace joystream {
 namespace extension {
 
 Plugin::Plugin(uint minimumMessageId,
+               Coin::Network network,
                libtorrent::alert_manager * alertManager,
                libtorrent::aux::session_impl * session)
     : _alertManager(alertManager)
     , _session(session)
     , _minimumMessageId(minimumMessageId)
+    , _network(network)
     , _addedToSession(false) {
 }
 
@@ -106,6 +108,10 @@ void Plugin::load_state(const libtorrent::bdecode_node &) {
 
 const std::map<libtorrent::sha1_hash, boost::weak_ptr<TorrentPlugin> > & Plugin::torrentPlugins() const noexcept {
     return _torrentPlugins;
+}
+
+Coin::Network Plugin::network() const {
+  return _network;
 }
 
 void Plugin::processesRequestQueue() {
