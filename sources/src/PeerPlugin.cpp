@@ -490,8 +490,8 @@ namespace extension {
         // Do we have full message
         if(length != lengthOfMessage) {
 
-            // Output progress
-            std::clog << "on_extended(id =" << msg << ", length =" << length << "): %" << ((float)(100*lengthOfMessage))/length << std::endl;
+            // Output progress - too exessive
+            // std::clog << "on_extended(id =" << msg << ", length =" << length << "): %" << ((float)(100*lengthOfMessage))/length << std::endl;
 
             // No other plugin should look at this
             return true;
