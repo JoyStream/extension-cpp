@@ -3,8 +3,8 @@ import os
 
 class ExtensionBase(ConanFile):
     name = "Extension"
-    version = "0.3.0"
-    license = "(c) JoyStream Inc. 2016-2017"
+    version = "0.3.1"
+    license = "(c) JoyStream Inc. 2016-2018"
     url = "https://github.com/JoyStream/extension-cpp.git"
     repo_ssh_url = "git@github.com:JoyStream/extension-cpp.git"
     repo_https_url = "https://github.com/JoyStream/extension-cpp.git"
