@@ -38,16 +38,6 @@ namespace protocol_session {
 
 namespace extension {
 
-std::chrono::duration<double>
-calculatePieceTimeout(const double & pieceLengthBytes,
-                      const double & targetRateBytesPerSecond,
-                      const double & minTimeoutSeconds) {
-
-  double targetTimeout = std::ceil(pieceLengthBytes / targetRateBytesPerSecond);
-  int timeout = std::max<double>(targetTimeout, minTimeoutSeconds);
-  return std::chrono::seconds(timeout);
-}
-
 TorrentPlugin::TorrentPlugin(Plugin * plugin,
                              const libtorrent::torrent_handle & torrent,
                              uint minimumMessageId,
@@ -411,21 +401,12 @@ void TorrentPlugin::toBuyMode(const protocol_wire::BuyerTerms & terms) {
         throw exception::InvalidModeTransition();
     }
 
-    // An upper bound on the amount of time to allow a seller to service one piece request before we
-    // the session should disconnect them.
-    // Set maxium time to service a piece based on its size, using a target download rate
-    // Assuming uniform piece size across torrent
-    const double pieceSize = torrent()->torrent_file().piece_length(); // Bytes
-    const double targetRate = 10000; // Bytes/s
-    const double minTimeout = 3; // lower bound
-
     _session.toBuyMode(removeConnection(),
                        fullPieceArrived(),
                        sentPayment(),
                        terms,
                        torrentPieceInformation(),
-                       allSellersGone(),
-                       calculatePieceTimeout(pieceSize, targetRate, minTimeout));
+                       allSellersGone());
 
     // Send notification
     _alertManager->emplace_alert<alert::SessionToBuyMode>(_torrent, terms);
