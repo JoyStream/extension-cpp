@@ -594,6 +594,19 @@ void TorrentPlugin::addToSession(PeerPlugin* peerPlugin) {
         plugin->send<>(m);
     };
 
+    send.speedTestRequest = [wPeerPlugin] (const protocol_wire::SpeedTestRequest &m) -> void {
+        boost::shared_ptr<PeerPlugin> plugin;
+        plugin = wPeerPlugin.lock();
+        assert(plugin);
+        plugin->send<>(m);
+    };
+
+    send.speedTestPayload = [wPeerPlugin] (const protocol_wire::SpeedTestPayload &m) -> void {
+        boost::shared_ptr<PeerPlugin> plugin;
+        plugin = wPeerPlugin.lock();
+        assert(plugin);
+        plugin->send<>(m);
+    };
 
     // add peer to sesion
     _session.addConnection(peerId, send);
@@ -634,16 +647,24 @@ protocol_session::RemovedConnectionCallbackHandler<libtorrent::peer_id> TorrentP
         // If the client was cause, then no further processing is required.
         // The callback is then a result of the stupid convention that Session::removeConnection()/stop()
         // triggers callback.
-        if(cause == protocol_session::DisconnectCause::client)
+        if(cause == protocol_session::DisconnectCause::client) {
             return;
-        else {
-          // Add peer to banlist unless it was just due to timeout
-          if (cause != protocol_session::DisconnectCause::seller_servicing_piece_has_timed_out) {
-              std::clog << "Adding peer to misbehavedPeers list: " << endPoint << " cause: " << (int)cause << std::endl;
-              // all other reasons are considered misbehaviour
-              _misbehavedPeers.insert(endPoint);
+        } else {
+          // Ban peers for bad behaviour
+          if (cause == protocol_session::DisconnectCause::seller_sent_invalid_piece ||
+              cause == protocol_session::DisconnectCause::seller_message_overflow ||
+              cause == protocol_session::DisconnectCause::buyer_requested_invalid_piece ||
+              cause == protocol_session::DisconnectCause::buyer_sent_invalid_payment ||
+              cause == protocol_session::DisconnectCause::buyer_message_overflow ||
+              cause == protocol_session::DisconnectCause::buyer_requested_too_many_speed_tests ||
+              cause == protocol_session::DisconnectCause::buyer_speed_test_payload_requested_too_large) {
+
+                std::clog << "Adding peer to misbehavedPeers list: " << endPoint << " cause: " << (int)cause << std::endl;
+                _misbehavedPeers.insert(endPoint);
+
           } else {
-            std::clog << "Peer timedout servicing pieces: " << endPoint << std::endl;
+            // For all other less severe disconnect causes
+            // add peer to temporary ban list?
           }
         }
 
