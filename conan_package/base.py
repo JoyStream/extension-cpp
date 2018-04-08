@@ -3,14 +3,14 @@ import os
 
 class ExtensionBase(ConanFile):
     name = "Extension"
-    version = "0.3.1"
+    version = "0.3.2"
     license = "(c) JoyStream Inc. 2016-2018"
     url = "https://github.com/JoyStream/extension-cpp.git"
     repo_ssh_url = "git@github.com:JoyStream/extension-cpp.git"
     repo_https_url = "https://github.com/JoyStream/extension-cpp.git"
     settings = "os", "compiler", "build_type", "arch"
     generators = "cmake"
-    requires = "ProtocolSession/0.3.0@joystream/stable", "Libtorrent/1.1.1@joystream/stable", "Common/0.2.0@joystream/stable"
+    requires = "ProtocolSession/0.3.1@joystream/stable", "Libtorrent/1.1.1@joystream/stable", "Common/0.2.0@joystream/stable"
     build_policy = "missing"
 
     def source(self):

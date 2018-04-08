@@ -25,6 +25,8 @@ namespace extension {
             case MessageType::request_full_piece: return "request_full_piece";
             case MessageType::full_piece: return "full_piece";
             case MessageType::payment: return "payment";
+            case MessageType::speedTestRequest: return "speedTestRequest";
+            case MessageType::speedTestPayload: return "speedTestPayload";
             default:
                  assert(false);
         }
@@ -50,6 +52,10 @@ namespace extension {
             return MessageType::full_piece;
         else if(getMessageName(MessageType::payment) == name)
             return MessageType::payment;
+        else if(getMessageName(MessageType::speedTestRequest) == name)
+            return MessageType::speedTestRequest;
+        else if(getMessageName(MessageType::speedTestPayload) == name)
+            return MessageType::speedTestPayload;
         else
             throw std::runtime_error("Invalid");
     }
@@ -88,6 +94,14 @@ namespace extension {
 
     MessageType getMessageType(const protocol_wire::Payment &) {
         return MessageType::payment;
+    }
+
+    MessageType getMessageType(const protocol_wire::SpeedTestRequest &) {
+        return MessageType::speedTestRequest;
+    }
+
+    MessageType getMessageType(const protocol_wire::SpeedTestPayload &) {
+        return MessageType::speedTestPayload;
     }
 }
 }
