@@ -523,6 +523,7 @@ namespace extension {
         }
         */
 
+        std::clog << "extended message=" << getMessageName(messageType) << std::endl;
 
         char* begin = const_cast<char *>(body.begin);
         char_array_buffer buffer(begin, begin + lengthOfMessage);
@@ -567,13 +568,21 @@ namespace extension {
                     _plugin->processExtendedMessage<>(this, stream.readPayment());
                     break;
                 }
+                case MessageType::speedTestRequest : {
+                    _plugin->processExtendedMessage<>(this, stream.readSpeedTestRequest());
+                    break;
+                }
+                case MessageType::speedTestPayload : {
+                    _plugin->processExtendedMessage<>(this, stream.readSpeedTestPayload());
+                    break;
+                }
                 default:
                     assert(false);
             }
 
         } catch (std::exception & e) {
 
-            std::clog << "Dropping Peer: Extended Message was Malformed" << std::endl;
+            std::clog << "Dropping Peer: Extended Message was Malformed:" << e.what() << std::endl;
 
             // Remove this peer
             libtorrent::error_code ec; // <-- "Malformed extended message received, removing."

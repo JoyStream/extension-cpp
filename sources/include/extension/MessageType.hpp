@@ -23,7 +23,9 @@ namespace extension {
         ready,
         request_full_piece,
         full_piece,
-        payment
+        payment,
+        speedTestRequest,
+        speedTestPayload
     };
 
     // Get name of message type
@@ -41,6 +43,8 @@ namespace extension {
     MessageType getMessageType(const protocol_wire::RequestFullPiece &);
     MessageType getMessageType(const protocol_wire::FullPiece &);
     MessageType getMessageType(const protocol_wire::Payment &);
+    MessageType getMessageType(const protocol_wire::SpeedTestRequest &);
+    MessageType getMessageType(const protocol_wire::SpeedTestPayload &);
 }
 }
 

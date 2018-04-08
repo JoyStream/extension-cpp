@@ -23,7 +23,9 @@ namespace extension {
         MessageType::ready,
         MessageType::request_full_piece,
         MessageType::full_piece,
-        MessageType::payment
+        MessageType::payment,
+        MessageType::speedTestRequest,
+        MessageType::speedTestPayload
     };
 
     ExtendedMessageIdMapping::ExtendedMessageIdMapping() {
